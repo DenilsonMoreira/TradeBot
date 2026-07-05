@@ -6,7 +6,8 @@ from sqlalchemy import select
 
 from app.binance_client import BinanceTestnetClient
 from app.database import Base, SessionLocal, engine
-from app.models import BotMode, BotStatus, Signal
+from app.models import BotMode, BotStatus, Position, PositionStatus, Signal
+from app.trading_service import execute_market_sell
 from app.strategy import calculate_ema_rsi_signal
 
 logging.basicConfig(
@@ -133,6 +134,59 @@ async def process_symbol(
     last_processed_candle[symbol] = closed_candle_open_time
     last_signal_by_symbol[symbol] = signal["signal_type"]
 
+async def manage_open_positions(
+    client: BinanceTestnetClient,
+    mode: BotMode,
+) -> None:
+    if mode != BotMode.TESTNET_TRADING:
+        return
+
+    with SessionLocal() as db:
+        positions = list(
+            db.scalars(
+                select(Position).where(
+                    Position.status == PositionStatus.OPEN
+                )
+            ).all()
+        )
+
+        for position in positions:
+            current_price = await client.get_current_price(position.symbol)
+
+            if (
+                position.stop_loss is not None
+                and current_price <= position.stop_loss
+            ):
+                logger.warning(
+                    "%s atingiu STOP_LOSS: preço=%s, limite=%s",
+                    position.symbol,
+                    current_price,
+                    position.stop_loss,
+                )
+                await execute_market_sell(
+                    db=db,
+                    client=client,
+                    symbol=position.symbol,
+                    close_reason="STOP_LOSS",
+                )
+                continue
+
+            if (
+                position.take_profit is not None
+                and current_price >= position.take_profit
+            ):
+                logger.info(
+                    "%s atingiu TAKE_PROFIT: preço=%s, alvo=%s",
+                    position.symbol,
+                    current_price,
+                    position.take_profit,
+                )
+                await execute_market_sell(
+                    db=db,
+                    client=client,
+                    symbol=position.symbol,
+                    close_reason="TAKE_PROFIT",
+                )
 
 async def run_worker() -> None:
     Base.metadata.create_all(bind=engine)
@@ -157,10 +211,11 @@ async def run_worker() -> None:
                 for symbol in SYMBOLS:
                     await process_symbol(client, symbol, mode)
 
+                await manage_open_positions(client, mode)
+
                 if mode == BotMode.TESTNET_TRADING:
                     logger.info(
-                        "Modo TESTNET_TRADING ativo, mas execução de ordens "
-                        "ainda não está habilitada nesta fase."
+                        "Modo TESTNET_TRADING ativo; posições abertas estão sendo monitoradas."
                     )
 
         except Exception:

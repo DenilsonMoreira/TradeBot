@@ -127,6 +127,7 @@ async def execute_market_sell(
     db: Session,
     client: BinanceTestnetClient,
     symbol: str = TRADE_SYMBOL,
+    close_reason: str = "MANUAL",
 ) -> Order:
     symbol = symbol.upper()
 
@@ -199,6 +200,7 @@ async def execute_market_sell(
         position.received_quote_amount = received_quote_amount
         position.realized_pnl = realized_pnl
         position.realized_pnl_percent = realized_pnl_percent
+        position.close_reason = close_reason
         position.closed_at = datetime.now(timezone.utc)
         db.commit()
 

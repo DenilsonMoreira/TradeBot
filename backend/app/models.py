@@ -15,6 +15,18 @@ class BotMode(str, enum.Enum):
     TESTNET_TRADING = "TESTNET_TRADING"
 
 
+class OrderStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    FILLED = "FILLED"
+    REJECTED = "REJECTED"
+    CANCELED = "CANCELED"
+
+
+class PositionStatus(str, enum.Enum):
+    OPEN = "OPEN"
+    CLOSED = "CLOSED"
+
+
 class BotStatus(Base):
     __tablename__ = "bot_status"
 
@@ -52,16 +64,6 @@ class Signal(Base):
         server_default=func.now(),
         nullable=False,
     )
-class OrderStatus(str, enum.Enum):
-    PENDING = "PENDING"
-    FILLED = "FILLED"
-    REJECTED = "REJECTED"
-    CANCELED = "CANCELED"
-
-
-class PositionStatus(str, enum.Enum):
-    OPEN = "OPEN"
-    CLOSED = "CLOSED"
 
 
 class Order(Base):
@@ -123,16 +125,29 @@ class Position(Base):
     quantity: Mapped[float] = mapped_column(Float, nullable=False)
     entry_price: Mapped[float] = mapped_column(Float, nullable=False)
     invested_quote_amount: Mapped[float] = mapped_column(Float, nullable=False)
+
     stop_loss: Mapped[float | None] = mapped_column(Float, nullable=True)
     take_profit: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     exit_order_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         nullable=True,
     )
     exit_price: Mapped[float | None] = mapped_column(Float, nullable=True)
-    received_quote_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
+    received_quote_amount: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+    )
     realized_pnl: Mapped[float | None] = mapped_column(Float, nullable=True)
-    realized_pnl_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
+    realized_pnl_percent: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+    )
+    close_reason: Mapped[str | None] = mapped_column(
+        String(30),
+        nullable=True,
+    )
+
     opened_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -141,4 +156,4 @@ class Position(Base):
     closed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
-    )    
+    )

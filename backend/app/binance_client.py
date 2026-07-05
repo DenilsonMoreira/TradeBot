@@ -134,3 +134,12 @@ class BinanceTestnetClient:
             )
             response.raise_for_status()
             return response.json()
+
+    async def get_current_price(self, symbol: str) -> float:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.get(
+                f"{self.base_url}/api/v3/ticker/price",
+                params={"symbol": symbol.upper()},
+            )
+            response.raise_for_status()
+            return float(response.json()["price"])

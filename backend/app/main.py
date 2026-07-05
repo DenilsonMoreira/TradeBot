@@ -280,3 +280,17 @@ def list_positions(
         )
 
     return list(db.scalars(statement).all())
+
+@app.post("/bot/emergency-stop", response_model=BotStatusResponse)
+def emergency_stop(db: Session = Depends(get_db)):
+    status = db.get(BotStatus, 1)
+
+    if status is None:
+        status = BotStatus(id=1, mode=BotMode.OFF)
+        db.add(status)
+    else:
+        status.mode = BotMode.OFF
+
+    db.commit()
+    db.refresh(status)
+    return status

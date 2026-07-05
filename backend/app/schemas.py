@@ -72,7 +72,9 @@ class PositionResponse(BaseModel):
     received_quote_amount: float | None
     realized_pnl: float | None
     realized_pnl_percent: float | None
+    close_reason: str | None
     opened_at: datetime
     closed_at: datetime | None
+    
 
     model_config = {"from_attributes": True}
