@@ -5,6 +5,8 @@ services:
     container_name: tradebot-api
     env_file:
       - .env
+    environment:
+      TZ: America/Fortaleza      
     ports:
       - "8000:8000"
     volumes:
@@ -12,6 +14,22 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  worker:
+    build:
+      context: ./backend
+    container_name: tradebot-worker
+    env_file:
+      - .env
+    environment:
+      TZ: America/Fortaleza            
+    command: python -m app.worker
+    volumes:
+      - ./backend/app:/app/app
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
 
   db:
     image: postgres:16-alpine
