@@ -34,3 +34,23 @@ class SignalResponse(SignalCreate):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+class ManualBuyRequest(BaseModel):
+    confirmation: str
+    quote_amount: float = Field(default=20.0, ge=10.0, le=20.0)
+
+
+class OrderResponse(BaseModel):
+    id: UUID
+    symbol: str
+    side: str
+    order_type: str
+    status: str
+    exchange_order_id: str | None
+    requested_quote_amount: float
+    executed_quantity: float | None
+    executed_price: float | None
+    error_message: str | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}

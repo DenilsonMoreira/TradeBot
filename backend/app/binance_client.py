@@ -1,6 +1,5 @@
 import hashlib
 import hmac
-import time
 from urllib.parse import urlencode
 
 import httpx
@@ -15,6 +14,12 @@ class BinanceTestnetClient:
             if settings.binance_testnet
             else "https://api.binance.com"
         )
+
+    async def get_server_time(self) -> int:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.get(f"{self.base_url}/api/v3/time")
+            response.raise_for_status()
+            return response.json()["serverTime"]
 
     async def get_candles(
         self,
@@ -35,24 +40,62 @@ class BinanceTestnetClient:
             return response.json()
 
     async def get_account(self) -> dict:
-        timestamp = int(time.time() * 1000)
-        query = urlencode({"timestamp": timestamp})
+        timestamp = await self.get_server_time()
+
+        params = {
+            "timestamp": timestamp,
+            "recvWindow": 10_000,
+        }
+
+        query = urlencode(params)
         signature = hmac.new(
             settings.binance_api_secret.encode(),
             query.encode(),
             hashlib.sha256,
         ).hexdigest()
 
+        params["signature"] = signature
+
         async with httpx.AsyncClient(timeout=15) as client:
             response = await client.get(
                 f"{self.base_url}/api/v3/account",
-                params={
-                    "timestamp": timestamp,
-                    "signature": signature,
-                },
-                headers={
-                    "X-MBX-APIKEY": settings.binance_api_key,
-                },
+                params=params,
+                headers={"X-MBX-APIKEY": settings.binance_api_key},
+            )
+            response.raise_for_status()
+            return response.json()
+
+    async def create_market_buy_order(
+        self,
+        symbol: str,
+        quote_order_qty: float,
+    ) -> dict:
+        timestamp = await self.get_server_time()
+
+        params = {
+            "symbol": symbol.upper(),
+            "side": "BUY",
+            "type": "MARKET",
+            "quoteOrderQty": f"{quote_order_qty:.2f}",
+            "newOrderRespType": "FULL",
+            "recvWindow": 10_000,
+            "timestamp": timestamp,
+        }
+
+        query = urlencode(params)
+        signature = hmac.new(
+            settings.binance_api_secret.encode(),
+            query.encode(),
+            hashlib.sha256,
+        ).hexdigest()
+
+        params["signature"] = signature
+
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.post(
+                f"{self.base_url}/api/v3/order",
+                params=params,
+                headers={"X-MBX-APIKEY": settings.binance_api_key},
             )
             response.raise_for_status()
             return response.json()

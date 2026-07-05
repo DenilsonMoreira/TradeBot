@@ -7,12 +7,15 @@ from sqlalchemy.orm import Session
 from app.binance_client import BinanceTestnetClient
 from app.config import settings
 from app.database import Base, engine, get_db
-from app.models import BotMode, BotStatus, Signal
+from app.models import BotMode, BotStatus, Order, Signal
+from app.trading_service import execute_market_buy
 from app.schemas import (
     BotModeUpdate,
     BotStatusResponse,
     SignalCreate,
     SignalResponse,
+    ManualBuyRequest,
+    OrderResponse
 )
 
 
@@ -167,3 +170,56 @@ def list_signals(
         )
 
     return list(db.scalars(query).all())
+
+@app.post(
+    "/trading/manual-buy",
+    response_model=OrderResponse,
+    status_code=201,
+)
+async def manual_buy(
+    payload: ManualBuyRequest,
+    db: Session = Depends(get_db),
+):
+    status = db.get(BotStatus, 1)
+
+    if status is None or status.mode != BotMode.TESTNET_TRADING:
+        raise HTTPException(
+            status_code=400,
+            detail="O bot precisa estar em TESTNET_TRADING para comprar.",
+        )
+
+    if payload.confirmation != "COMPRAR BTC TESTNET":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Confirmação inválida. Envie "
+                '`"confirmation": "COMPRAR BTC TESTNET"`'
+            ),
+        )
+
+    try:
+        return await execute_market_buy(
+            db=db,
+            client=binance,
+            quote_amount=payload.quote_amount,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    except Exception as error:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Falha ao enviar ordem para Binance Testnet: {error}",
+        )
+
+
+@app.get("/orders", response_model=list[OrderResponse])
+def list_orders(
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    statement = (
+        select(Order)
+        .order_by(Order.created_at.desc())
+        .limit(limit)
+    )
+    return list(db.scalars(statement).all())
