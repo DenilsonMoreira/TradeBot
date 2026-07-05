@@ -3,6 +3,7 @@ import logging
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from datetime import datetime, timezone
 
 from app.binance_client import BinanceTestnetClient
 from app.models import (
@@ -87,13 +88,20 @@ async def execute_market_buy(
         db.commit()
         db.refresh(order)
 
+        executed_quote_amount = float(
+            response.get("cummulativeQuoteQty", 0)
+        )
+
+        if executed_quote_amount <= 0:
+            executed_quote_amount = executed_quantity * executed_price
+
         position = Position(
             symbol=symbol,
             status=PositionStatus.OPEN,
             entry_order_id=order.id,
             quantity=executed_quantity,
             entry_price=executed_price,
-            invested_quote_amount=quote_amount,
+            invested_quote_amount=executed_quote_amount,
             stop_loss=executed_price * 0.98,
             take_profit=executed_price * 1.04,
         )
@@ -105,6 +113,100 @@ async def execute_market_buy(
             symbol,
             executed_quantity,
             executed_price,
+        )
+
+        return order
+
+    except Exception as error:
+        order.status = OrderStatus.REJECTED
+        order.error_message = str(error)
+        db.commit()
+        raise
+
+async def execute_market_sell(
+    db: Session,
+    client: BinanceTestnetClient,
+    symbol: str = TRADE_SYMBOL,
+) -> Order:
+    symbol = symbol.upper()
+
+    position = db.scalar(
+        select(Position)
+        .where(
+            Position.symbol == symbol,
+            Position.status == PositionStatus.OPEN,
+        )
+        .order_by(Position.opened_at.desc())
+        .limit(1)
+    )
+
+    if position is None:
+        raise ValueError(f"Não existe posição aberta para {symbol}.")
+
+    order = Order(
+        symbol=symbol,
+        side="SELL",
+        order_type="MARKET",
+        status=OrderStatus.PENDING,
+        requested_quote_amount=position.invested_quote_amount,
+    )
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+
+    try:
+        response = await client.create_market_sell_order(
+            symbol=symbol,
+            quantity=position.quantity,
+        )
+
+        fills = response.get("fills", [])
+        executed_quantity = float(response.get("executedQty", 0))
+
+        if executed_quantity <= 0:
+            raise ValueError("A Binance retornou quantidade vendida inválida.")
+
+        received_quote_amount = sum(
+            float(fill["price"]) * float(fill["qty"])
+            for fill in fills
+        )
+
+        if received_quote_amount <= 0:
+            received_quote_amount = float(
+                response.get("cummulativeQuoteQty", 0)
+            )
+
+        exit_price = received_quote_amount / executed_quantity
+
+        order.status = OrderStatus.FILLED
+        order.exchange_order_id = str(response["orderId"])
+        order.executed_quantity = executed_quantity
+        order.executed_price = exit_price
+        order.raw_response = json.dumps(response)
+        db.commit()
+        db.refresh(order)
+
+        realized_pnl = (
+            received_quote_amount - position.invested_quote_amount
+        )
+        realized_pnl_percent = (
+            realized_pnl / position.invested_quote_amount
+        ) * 100
+
+        position.status = PositionStatus.CLOSED
+        position.exit_order_id = order.id
+        position.exit_price = exit_price
+        position.received_quote_amount = received_quote_amount
+        position.realized_pnl = realized_pnl
+        position.realized_pnl_percent = realized_pnl_percent
+        position.closed_at = datetime.now(timezone.utc)
+        db.commit()
+
+        logger.info(
+            "Venda executada: %s | P&L=%s USDT (%s%%)",
+            symbol,
+            realized_pnl,
+            realized_pnl_percent,
         )
 
         return order

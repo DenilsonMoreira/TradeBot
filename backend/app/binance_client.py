@@ -99,3 +99,38 @@ class BinanceTestnetClient:
             )
             response.raise_for_status()
             return response.json()
+    
+    async def create_market_sell_order(
+        self,
+        symbol: str,
+        quantity: float,
+    ) -> dict:
+        timestamp = await self.get_server_time()
+
+        params = {
+            "symbol": symbol.upper(),
+            "side": "SELL",
+            "type": "MARKET",
+            "quantity": f"{quantity:.8f}",
+            "newOrderRespType": "FULL",
+            "recvWindow": 10_000,
+            "timestamp": timestamp,
+        }
+
+        query = urlencode(params)
+        signature = hmac.new(
+            settings.binance_api_secret.encode(),
+            query.encode(),
+            hashlib.sha256,
+        ).hexdigest()
+
+        params["signature"] = signature
+
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.post(
+                f"{self.base_url}/api/v3/order",
+                params=params,
+                headers={"X-MBX-APIKEY": settings.binance_api_key},
+            )
+            response.raise_for_status()
+            return response.json()

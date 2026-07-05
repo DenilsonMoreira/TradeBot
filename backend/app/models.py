@@ -125,6 +125,14 @@ class Position(Base):
     invested_quote_amount: Mapped[float] = mapped_column(Float, nullable=False)
     stop_loss: Mapped[float | None] = mapped_column(Float, nullable=True)
     take_profit: Mapped[float | None] = mapped_column(Float, nullable=True)
+    exit_order_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+    )
+    exit_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    received_quote_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
+    realized_pnl: Mapped[float | None] = mapped_column(Float, nullable=True)
+    realized_pnl_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
     opened_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

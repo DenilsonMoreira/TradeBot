@@ -7,15 +7,17 @@ from sqlalchemy.orm import Session
 from app.binance_client import BinanceTestnetClient
 from app.config import settings
 from app.database import Base, engine, get_db
-from app.models import BotMode, BotStatus, Order, Signal
-from app.trading_service import execute_market_buy
+from app.models import BotMode, BotStatus, Order, Position, Signal
+from app.trading_service import execute_market_buy, execute_market_sell
 from app.schemas import (
     BotModeUpdate,
     BotStatusResponse,
     SignalCreate,
-    SignalResponse,
+    SignalResponse,    
     ManualBuyRequest,
-    OrderResponse
+    ManualSellRequest,
+    OrderResponse,
+    PositionResponse,
 )
 
 
@@ -222,4 +224,59 @@ def list_orders(
         .order_by(Order.created_at.desc())
         .limit(limit)
     )
+    return list(db.scalars(statement).all())
+
+@app.post(
+    "/trading/manual-sell",
+    response_model=OrderResponse,
+    status_code=201,
+)
+async def manual_sell(
+    payload: ManualSellRequest,
+    db: Session = Depends(get_db),
+):
+    status = db.get(BotStatus, 1)
+
+    if status is None or status.mode != BotMode.TESTNET_TRADING:
+        raise HTTPException(
+            status_code=400,
+            detail="O bot precisa estar em TESTNET_TRADING para vender.",
+        )
+
+    if payload.confirmation != "VENDER BTC TESTNET":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Confirmação inválida. Envie "
+                '`"confirmation": "VENDER BTC TESTNET"`'
+            ),
+        )
+
+    try:
+        return await execute_market_sell(db=db, client=binance)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    except Exception as error:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Falha ao vender na Binance Testnet: {error}",
+        )
+
+
+@app.get("/positions", response_model=list[PositionResponse])
+def list_positions(
+    status: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    statement = select(Position).order_by(Position.opened_at.desc()).limit(limit)
+
+    if status:
+        statement = (
+            select(Position)
+            .where(Position.status == status.upper())
+            .order_by(Position.opened_at.desc())
+            .limit(limit)
+        )
+
     return list(db.scalars(statement).all())

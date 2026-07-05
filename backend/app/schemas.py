@@ -54,3 +54,25 @@ class OrderResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+class ManualSellRequest(BaseModel):
+    confirmation: str
+
+
+class PositionResponse(BaseModel):
+    id: UUID
+    symbol: str
+    status: str
+    quantity: float
+    entry_price: float
+    invested_quote_amount: float
+    stop_loss: float | None
+    take_profit: float | None
+    exit_price: float | None
+    received_quote_amount: float | None
+    realized_pnl: float | None
+    realized_pnl_percent: float | None
+    opened_at: datetime
+    closed_at: datetime | None
+
+    model_config = {"from_attributes": True}
