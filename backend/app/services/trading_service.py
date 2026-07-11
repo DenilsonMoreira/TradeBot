@@ -1,9 +1,9 @@
 import json
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.binance_client import BinanceTestnetClient
 from app.models import (
@@ -11,6 +11,7 @@ from app.models import (
     OrderStatus,
     Position,
     PositionStatus,
+    TradingRiskSettings
 )
 
 logger = logging.getLogger(__name__)
@@ -218,3 +219,56 @@ async def execute_market_sell(
         order.error_message = str(error)
         db.commit()
         raise
+
+def can_open_automatic_position(
+    db: Session,
+    symbol: str,
+) -> tuple[bool, str]:
+    settings = db.get(TradingRiskSettings, 1)
+
+    if settings is None:
+        return False, "Configurações de risco não encontradas."
+
+    if not settings.auto_entry_enabled:
+        return False, "Entrada automática está desativada."
+
+    open_positions = db.scalar(
+        select(func.count(Position.id)).where(
+            Position.status == PositionStatus.OPEN
+        )
+    )
+
+    if open_positions >= settings.max_open_positions:
+        return False, "Limite de posições abertas atingido."
+
+    now = datetime.now(timezone.utc)
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    daily_pnl = db.scalar(
+        select(func.coalesce(func.sum(Position.realized_pnl), 0.0)).where(
+            Position.status == PositionStatus.CLOSED,
+            Position.closed_at >= day_start,
+        )
+    )
+
+    if daily_pnl <= -settings.max_daily_loss:
+        return False, "Limite de perda diária atingido."
+
+    last_position = db.scalar(
+        select(Position)
+        .where(Position.symbol == symbol)
+        .order_by(Position.opened_at.desc())
+        .limit(1)
+    )
+
+    if last_position is not None:
+        cooldown_until = last_position.opened_at + timedelta(
+            minutes=settings.cooldown_minutes
+        )
+
+        if now < cooldown_until:
+            return False, (
+                f"Cooldown ativo até {cooldown_until.isoformat()}."
+            )
+
+    return True, "Entrada automática permitida."

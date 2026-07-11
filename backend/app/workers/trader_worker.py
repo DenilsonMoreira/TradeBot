@@ -7,7 +7,11 @@ from sqlalchemy import select
 from app.binance_client import BinanceTestnetClient
 from app.database import Base, SessionLocal, engine
 from app.models import BotMode, BotStatus, Position, PositionStatus, Signal
-from app.trading_service import execute_market_sell
+from app.trading_service import (
+    can_open_automatic_position,
+    execute_market_buy,
+    execute_market_sell,
+)
 from app.strategy import calculate_ema_rsi_signal
 
 logging.basicConfig(
@@ -17,10 +21,12 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-SYMBOLS = ["BTCUSDT", "ETHUSDT"]
+SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
 TIMEFRAME = "15m"
+# TIMEFRAME = "1m"
 CANDLE_LIMIT = 100
 CHECK_INTERVAL_SECONDS = 60
+# CHECK_INTERVAL_SECONDS = 15
 
 last_processed_candle: dict[str, int] = {}
 last_signal_by_symbol: dict[str, str] = {}
@@ -130,6 +136,35 @@ async def process_symbol(
             mode=mode,
             candle_time=closed_candle_open_time,
         )
+        if (
+            mode == BotMode.TESTNET_TRADING
+            and symbol == "BTCUSDT"
+            and signal["signal_type"] == "BUY"
+        ):
+            with SessionLocal() as db:
+                allowed, reason = can_open_automatic_position(
+                    db=db,
+                    symbol=symbol,
+                )
+
+                if allowed:
+                    logger.warning(
+                        "%s | BUY automático autorizado. "
+                        "Enviando ordem Testnet.",
+                        symbol,
+                    )
+
+                    await execute_market_buy(
+                        db=db,
+                        client=client,
+                        symbol=symbol,
+                    )
+                else:
+                    logger.info(
+                        "%s | BUY automático bloqueado: %s",
+                        symbol,
+                        reason,
+                    )
 
     last_processed_candle[symbol] = closed_candle_open_time
     last_signal_by_symbol[symbol] = signal["signal_type"]

@@ -78,3 +78,34 @@ class PositionResponse(BaseModel):
     
 
     model_config = {"from_attributes": True}
+
+class TradingRiskSettingsUpdate(BaseModel):
+    auto_entry_enabled: bool
+    max_quote_amount_per_trade: float = Field(
+        ge=10.0,
+        le=20.0,
+    )
+    max_daily_loss: float = Field(
+        ge=1.0,
+        le=500.0,
+    )
+    max_open_positions: int = Field(
+        ge=1,
+        le=1,
+    )
+    cooldown_minutes: int = Field(
+        ge=1,
+        le=1440,
+    )
+    confirmation: str | None = None
+
+
+class TradingRiskSettingsResponse(BaseModel):
+    auto_entry_enabled: bool
+    max_quote_amount_per_trade: float
+    max_daily_loss: float
+    max_open_positions: int
+    cooldown_minutes: int
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}

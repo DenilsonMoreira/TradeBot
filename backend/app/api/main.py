@@ -6,37 +6,60 @@ from sqlalchemy.orm import Session
 
 from app.binance_client import BinanceTestnetClient
 from app.config import settings
-from app.database import Base, engine, get_db
-from app.models import BotMode, BotStatus, Order, Position, Signal
-from app.trading_service import execute_market_buy, execute_market_sell
+from app.database import Base, SessionLocal, engine, get_db
+from app.models import (
+    BotMode,
+    BotStatus,
+    Order,
+    Position,
+    Signal,
+    TradingRiskSettings,
+)
 from app.schemas import (
     BotModeUpdate,
     BotStatusResponse,
-    SignalCreate,
-    SignalResponse,    
     ManualBuyRequest,
     ManualSellRequest,
     OrderResponse,
     PositionResponse,
+    SignalCreate,
+    SignalResponse,
+    TradingRiskSettingsResponse,
+    TradingRiskSettingsUpdate,
 )
+from app.trading_service import execute_market_buy, execute_market_sell
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
 
-    with Session(engine) as db:
+    with SessionLocal() as db:
         status = db.get(BotStatus, 1)
         if status is None:
             db.add(BotStatus(id=1, mode=BotMode.OFF))
-            db.commit()
+
+        risk_settings = db.get(TradingRiskSettings, 1)
+        if risk_settings is None:
+            db.add(
+                TradingRiskSettings(
+                    id=1,
+                    auto_entry_enabled=False,
+                    max_quote_amount_per_trade=20.0,
+                    max_daily_loss=40.0,
+                    max_open_positions=1,
+                    cooldown_minutes=30,
+                )
+            )
+
+        db.commit()
 
     yield
 
 
 app = FastAPI(
     title="TradeBot API",
-    version="0.2.0",
+    version="0.7.0",
     description="Bot de trading em modo Binance Spot Testnet",
     lifespan=lifespan,
 )
@@ -102,8 +125,13 @@ async def account_balance():
 @app.get("/bot/status", response_model=BotStatusResponse)
 def get_bot_status(db: Session = Depends(get_db)):
     status = db.get(BotStatus, 1)
+
     if status is None:
-        raise HTTPException(status_code=500, detail="Status do bot não inicializado")
+        raise HTTPException(
+            status_code=500,
+            detail="Status do bot não inicializado.",
+        )
+
     return status
 
 
@@ -112,22 +140,40 @@ def update_bot_status(
     payload: BotModeUpdate,
     db: Session = Depends(get_db),
 ):
-    if payload.mode == BotMode.TESTNET_TRADING:
-        if payload.confirmation != "ATIVAR TESTNET":
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "Para ativar TESTNET_TRADING, envie "
-                    '`"confirmation": "ATIVAR TESTNET"`'
-                ),
-            )
+    if (
+        payload.mode == BotMode.TESTNET_TRADING
+        and payload.confirmation != "ATIVAR TESTNET"
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Para ativar TESTNET_TRADING, envie "
+                '"confirmation": "ATIVAR TESTNET".'
+            ),
+        )
 
     status = db.get(BotStatus, 1)
+
     if status is None:
         status = BotStatus(id=1, mode=payload.mode)
         db.add(status)
     else:
         status.mode = payload.mode
+
+    db.commit()
+    db.refresh(status)
+    return status
+
+
+@app.post("/bot/emergency-stop", response_model=BotStatusResponse)
+def emergency_stop(db: Session = Depends(get_db)):
+    status = db.get(BotStatus, 1)
+
+    if status is None:
+        status = BotStatus(id=1, mode=BotMode.OFF)
+        db.add(status)
+    else:
+        status.mode = BotMode.OFF
 
     db.commit()
     db.refresh(status)
@@ -161,17 +207,18 @@ def list_signals(
     limit: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
 ):
-    query = select(Signal).order_by(Signal.created_at.desc()).limit(limit)
+    statement = select(Signal).order_by(Signal.created_at.desc()).limit(limit)
 
     if symbol:
-        query = (
+        statement = (
             select(Signal)
             .where(Signal.symbol == symbol.upper())
             .order_by(Signal.created_at.desc())
             .limit(limit)
         )
 
-    return list(db.scalars(query).all())
+    return list(db.scalars(statement).all())
+
 
 @app.post(
     "/trading/manual-buy",
@@ -195,7 +242,7 @@ async def manual_buy(
             status_code=400,
             detail=(
                 "Confirmação inválida. Envie "
-                '`"confirmation": "COMPRAR BTC TESTNET"`'
+                '"confirmation": "COMPRAR BTC TESTNET".'
             ),
         )
 
@@ -213,18 +260,6 @@ async def manual_buy(
             detail=f"Falha ao enviar ordem para Binance Testnet: {error}",
         )
 
-
-@app.get("/orders", response_model=list[OrderResponse])
-def list_orders(
-    limit: int = Query(default=50, ge=1, le=200),
-    db: Session = Depends(get_db),
-):
-    statement = (
-        select(Order)
-        .order_by(Order.created_at.desc())
-        .limit(limit)
-    )
-    return list(db.scalars(statement).all())
 
 @app.post(
     "/trading/manual-sell",
@@ -248,12 +283,16 @@ async def manual_sell(
             status_code=400,
             detail=(
                 "Confirmação inválida. Envie "
-                '`"confirmation": "VENDER BTC TESTNET"`'
+                '"confirmation": "VENDER BTC TESTNET".'
             ),
         )
 
     try:
-        return await execute_market_sell(db=db, client=binance)
+        return await execute_market_sell(
+            db=db,
+            client=binance,
+            close_reason="MANUAL",
+        )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
     except Exception as error:
@@ -261,6 +300,15 @@ async def manual_sell(
             status_code=502,
             detail=f"Falha ao vender na Binance Testnet: {error}",
         )
+
+
+@app.get("/orders", response_model=list[OrderResponse])
+def list_orders(
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    statement = select(Order).order_by(Order.created_at.desc()).limit(limit)
+    return list(db.scalars(statement).all())
 
 
 @app.get("/positions", response_model=list[PositionResponse])
@@ -281,16 +329,57 @@ def list_positions(
 
     return list(db.scalars(statement).all())
 
-@app.post("/bot/emergency-stop", response_model=BotStatusResponse)
-def emergency_stop(db: Session = Depends(get_db)):
-    status = db.get(BotStatus, 1)
 
-    if status is None:
-        status = BotStatus(id=1, mode=BotMode.OFF)
-        db.add(status)
-    else:
-        status.mode = BotMode.OFF
+@app.get(
+    "/trading/risk-settings",
+    response_model=TradingRiskSettingsResponse,
+)
+def get_risk_settings(db: Session = Depends(get_db)):
+    risk_settings = db.get(TradingRiskSettings, 1)
+
+    if risk_settings is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Configurações de risco não inicializadas.",
+        )
+
+    return risk_settings
+
+
+@app.put(
+    "/trading/risk-settings",
+    response_model=TradingRiskSettingsResponse,
+)
+def update_risk_settings(
+    payload: TradingRiskSettingsUpdate,
+    db: Session = Depends(get_db),
+):
+    if (
+        payload.auto_entry_enabled
+        and payload.confirmation != "ATIVAR ENTRADA AUTOMATICA"
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Para ativar entrada automática, envie "
+                '"confirmation": "ATIVAR ENTRADA AUTOMATICA".'
+            ),
+        )
+
+    risk_settings = db.get(TradingRiskSettings, 1)
+
+    if risk_settings is None:
+        risk_settings = TradingRiskSettings(id=1)
+        db.add(risk_settings)
+
+    risk_settings.auto_entry_enabled = payload.auto_entry_enabled
+    risk_settings.max_quote_amount_per_trade = (
+        payload.max_quote_amount_per_trade
+    )
+    risk_settings.max_daily_loss = payload.max_daily_loss
+    risk_settings.max_open_positions = payload.max_open_positions
+    risk_settings.cooldown_minutes = payload.cooldown_minutes
 
     db.commit()
-    db.refresh(status)
-    return status
+    db.refresh(risk_settings)
+    return risk_settings
