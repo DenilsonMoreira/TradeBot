@@ -46,3 +46,22 @@ class ModelRegistry:
 
     def get_active(self, dataset_id: int) -> TrainedModel | None:
         return self.repository.get_active_model(dataset_id)
+
+    def recommend(
+        self,
+        dataset_id: int,
+        *,
+        min_strategy_return: float = 0.0,
+        min_f1: float = 0.0,
+    ) -> TrainedModel | None:
+        candidates = []
+        for model in self.repository.get_models_for_dataset(dataset_id):
+            if model.algorithm == "baseline" or model.status == "INACTIVE":
+                continue
+            strategy_return = float(model.metrics.get("strategy_return", 0))
+            f1 = float(model.metrics.get("f1", 0))
+            if strategy_return >= min_strategy_return and f1 >= min_f1:
+                candidates.append((strategy_return, f1, model))
+        if not candidates:
+            return None
+        return max(candidates, key=lambda item: (item[0], item[1]))[2]

@@ -58,6 +58,24 @@ class EnsembleRequest(BaseModel):
     threshold: float = Field(default=0.5, gt=0, lt=1)
 
 
+class PredictionRequest(BaseModel):
+    dataset_id: int = Field(gt=0)
+    candle_id: int = Field(gt=0)
+    features: dict[str, float]
+
+
+class PredictionResponse(BaseModel):
+    id: int
+    model_id: int
+    dataset_id: int
+    candle_id: int
+    probability: Decimal
+    signal: str
+    features: dict[str, float]
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+
 class ModelResponse(BaseModel):
     id: int
     dataset_id: int

@@ -8,6 +8,7 @@ from app.database import Base
 from app.models.candle import Candle  # noqa: F401
 from app.models.indicator import Indicator  # noqa: F401
 from app.models.research import BacktestRun, DatasetArtifact, TrainedModel  # noqa: F401
+from app.models.prediction import Prediction  # noqa: F401
 
 
 config = context.config

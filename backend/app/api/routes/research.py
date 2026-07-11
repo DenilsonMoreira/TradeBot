@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.dependencies import get_backtest_service, get_dataset_service, get_ensemble_service, get_model_registry, get_research_repository, get_training_service
+from app.api.dependencies import get_backtest_service, get_dataset_service, get_ensemble_service, get_model_registry, get_prediction_service, get_research_repository, get_training_service
 from app.ai.registry import ModelRegistry
 from app.backtest.engine import BacktestConfig
 from app.repositories.research_repository import ResearchRepository
-from app.schemas.research import BacktestRequest, BacktestResponse, DatasetRequest, DatasetResponse, EnsembleRequest, ModelResponse, TrainingRequest
+from app.schemas.research import BacktestRequest, BacktestResponse, DatasetRequest, DatasetResponse, EnsembleRequest, ModelResponse, PredictionRequest, PredictionResponse, TrainingRequest
 from app.services.ensemble_service import EnsembleService
+from app.services.prediction_service import PredictionService
 from app.services.backtest_service import BacktestService
 from app.services.dataset_service import DatasetService
 from app.services.training_service import TrainingService
@@ -96,3 +97,41 @@ def evaluate_ensemble(
         )
     except ValueError as error:
         raise HTTPException(400, str(error)) from error
+
+
+@router.get("/datasets/{dataset_id}/models/recommend", response_model=ModelResponse | None)
+def recommend_model(
+    dataset_id: int,
+    min_strategy_return: float = Query(default=0.0),
+    min_f1: float = Query(default=0.0, ge=0, le=1),
+    registry: ModelRegistry = Depends(get_model_registry),
+):
+    return registry.recommend(
+        dataset_id,
+        min_strategy_return=min_strategy_return,
+        min_f1=min_f1,
+    )
+
+
+@router.post("/predictions", response_model=PredictionResponse)
+def create_prediction(
+    payload: PredictionRequest,
+    service: PredictionService = Depends(get_prediction_service),
+):
+    try:
+        return service.predict(
+            payload.dataset_id,
+            payload.candle_id,
+            payload.features,
+        )
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+
+
+@router.get("/datasets/{dataset_id}/predictions", response_model=list[PredictionResponse])
+def list_predictions(
+    dataset_id: int,
+    limit: int = Query(default=100, ge=1, le=1000),
+    repository: ResearchRepository = Depends(get_research_repository),
+):
+    return repository.list_predictions(dataset_id, limit)

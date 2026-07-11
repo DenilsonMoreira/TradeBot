@@ -2,6 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.research import BacktestRun, DatasetArtifact, TrainedModel
+from app.models.prediction import Prediction
 
 
 class ResearchRepository:
@@ -84,3 +85,19 @@ class ResearchRepository:
             )
             .with_for_update()
         )
+
+    def get_prediction(self, model_id: int, candle_id: int):
+        return self.session.scalar(
+            select(Prediction).where(
+                Prediction.model_id == model_id,
+                Prediction.candle_id == candle_id,
+            )
+        )
+
+    def list_predictions(self, dataset_id: int, limit: int = 100):
+        return self.session.scalars(
+            select(Prediction)
+            .where(Prediction.dataset_id == dataset_id)
+            .order_by(Prediction.created_at.desc())
+            .limit(limit)
+        ).all()

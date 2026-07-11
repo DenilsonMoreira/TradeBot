@@ -73,7 +73,11 @@ Indicadores
 
 ✔ Avaliação no teste temporal
 
-Pendente: inferência versionada e política de seleção automática
+✔ Inferência versionada e idempotente
+
+✔ Recomendação por métricas financeiras fora da amostra
+
+✔ Separação obrigatória entre previsão, risco e execução
 
 ## Fase 14
 

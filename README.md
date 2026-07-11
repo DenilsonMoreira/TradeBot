@@ -66,6 +66,17 @@ POST /models/{model_id}/deactivate
 GET  /datasets/{dataset_id}/models/active
 ```
 
+Inferência e recomendação:
+
+```text
+GET  /datasets/{dataset_id}/models/recommend
+POST /predictions
+GET  /datasets/{dataset_id}/predictions
+```
+
+Uma previsão nunca cria ordem diretamente. Qualquer uso operacional futuro
+deve passar pelo gestor de risco e pelo serviço de execução.
+
 ## Testes
 
 ```bash

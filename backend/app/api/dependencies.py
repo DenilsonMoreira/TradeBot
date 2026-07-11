@@ -14,6 +14,7 @@ from app.services.dataset_service import DatasetService
 from app.services.training_service import TrainingService
 from app.ai.registry import ModelRegistry
 from app.services.ensemble_service import EnsembleService
+from app.services.prediction_service import PredictionService
 
 
 def get_candle_service(db: Session = Depends(get_db)) -> CandleService:
@@ -50,3 +51,7 @@ def get_model_registry(db: Session = Depends(get_db)) -> ModelRegistry:
 
 def get_ensemble_service(db: Session = Depends(get_db)) -> EnsembleService:
     return EnsembleService(ResearchRepository(db), settings.model_artifact_dir)
+
+
+def get_prediction_service(db: Session = Depends(get_db)) -> PredictionService:
+    return PredictionService(ResearchRepository(db))
