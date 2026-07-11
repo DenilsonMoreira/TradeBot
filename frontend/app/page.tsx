@@ -90,6 +90,16 @@ export default function Home() {
 
         {error && <div className="notice"><strong>Conecte a API local.</strong><span>{error} · endereço esperado: {API}</span></div>}
 
+        <section className="daily-summary" id="daily" aria-label="Resumo operacional do dia">
+          <div><p className="eyebrow">Resumo de hoje</p><strong>{status?.mode === "TESTNET_TRADING" ? "Operação Testnet ativa" : status?.mode === "MONITOR" ? "Mercado em monitoramento" : "Bot sem novas entradas"}</strong></div>
+          <dl>
+            <div><dt>P&amp;L</dt><dd className={realized >= 0 ? "positive" : "negative"}>{money(realized)}</dd></div>
+            <div><dt>Em aberto</dt><dd>{activePositions.length}</dd></div>
+            <div><dt>Modelo</dt><dd>{activeModel?.algorithm.replaceAll("_", " ") ?? "—"}</dd></div>
+          </dl>
+          <button className="summary-refresh" onClick={() => void load()} disabled={busy} aria-label="Atualizar dados do painel">{busy ? "Atualizando…" : "Atualizar agora"}</button>
+        </section>
+
         <section className="hero-grid" id="overview">
           <article className="market-card" id="market">
             <div className="card-head"><div><p className="eyebrow">BTC / USDT · 15m</p><h2>{lastPrice ? money(lastPrice) : "—"}</h2></div><span className="live-pill">Mercado ao vivo</span></div>
@@ -119,6 +129,14 @@ export default function Home() {
 
         <section className="panel backtests"><div className="panel-title"><div><p className="eyebrow">Validação</p><h3>Backtests recentes</h3></div><span>Custos e slippage incluídos</span></div><div className="backtest-grid">{backtests.length ? backtests.slice(0, 4).map((run) => <div className="backtest-item" key={run.id}><small>{run.symbol} · {run.strategy}</small><strong>{money(run.final_capital)}</strong><span>{run.metrics.trade_count ?? 0} operações · retorno {Number(run.metrics.return_percent ?? 0).toFixed(2)}%</span></div>) : <p className="empty">Execute um backtest para iniciar a comparação.</p>}</div></section>
       </section>
+
+      <nav className="mobile-nav" aria-label="Navegação móvel">
+        <a href="#overview"><span aria-hidden="true">⌂</span>Início</a>
+        <a href="#market"><span aria-hidden="true">⌁</span>Mercado</a>
+        <a href="#positions"><span aria-hidden="true">◎</span>Posições</a>
+        <a href="#research"><span aria-hidden="true">◇</span>Pesquisa</a>
+      </nav>
+      <button className="mobile-emergency" onClick={() => void emergencyStop()} aria-label="Acionar parada de emergência">Parar bot</button>
     </main>
   );
 }

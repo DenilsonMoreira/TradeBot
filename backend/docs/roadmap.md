@@ -95,6 +95,16 @@ Pendente: hospedagem pública após disponibilização HTTPS da API
 
 Aplicativo
 
+✔ Dashboard adaptado para uso móvel
+
+✔ Navegação inferior e alvos de toque acessíveis
+
+✔ Resumo diário e parada de emergência ao alcance de uma mão
+
+✔ Web app instalável com manifest e suporte a safe areas
+
+Pendente: aplicativo nativo, autenticação e segundo fator
+
 ## Fase 16
 
 SaaS

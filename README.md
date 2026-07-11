@@ -16,6 +16,10 @@ A API fica disponível em `http://localhost:8000` e o Swagger em
 
 O painel web fica disponível em `http://localhost:3000`.
 
+Em celulares, o painel oferece navegação por toque e pode ser instalado pela
+opção "Adicionar à tela inicial" do navegador. O acesso continua dependente da
+API local; não há envio direto de ordens a partir da interface.
+
 Serviços iniciados:
 
 - `api`: FastAPI e migrations Alembic;
