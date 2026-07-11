@@ -26,15 +26,20 @@ class BinanceTestnetClient:
         symbol: str,
         interval: str = "15m",
         limit: int = 100,
+        start_time: int | None = None,
     ) -> list:
+        params = {
+            "symbol": symbol.upper(),
+            "interval": interval,
+            "limit": limit,
+        }
+        if start_time is not None:
+            params["startTime"] = start_time
+
         async with httpx.AsyncClient(timeout=15) as client:
             response = await client.get(
                 f"{self.base_url}/api/v3/klines",
-                params={
-                    "symbol": symbol.upper(),
-                    "interval": interval,
-                    "limit": limit,
-                },
+                params=params,
             )
             response.raise_for_status()
             return response.json()
