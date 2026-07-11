@@ -81,7 +81,15 @@ Indicadores
 
 ## Fase 14
 
-Painel Web
+✔ Painel React responsivo
+
+✔ Visão operacional, candles, posições, modelos e backtests
+
+✔ Parada de emergência e atualização manual
+
+✔ Integração local via Docker e CORS restrito
+
+Pendente: hospedagem pública após disponibilização HTTPS da API
 
 ## Fase 15
 

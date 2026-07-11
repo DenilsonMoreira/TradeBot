@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -67,6 +68,17 @@ app = FastAPI(
     version="0.7.0",
     description="Bot de trading em modo Binance Spot Testnet",
     lifespan=lifespan,
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        origin.strip()
+        for origin in settings.cors_origins.split(",")
+        if origin.strip()
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
+    allow_headers=["*"],
 )
 app.include_router(candles_router)
 app.include_router(indicators_router)

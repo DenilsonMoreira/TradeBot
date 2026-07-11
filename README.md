@@ -14,9 +14,12 @@ docker compose ps
 A API fica disponível em `http://localhost:8000` e o Swagger em
 `http://localhost:8000/docs`.
 
+O painel web fica disponível em `http://localhost:3000`.
+
 Serviços iniciados:
 
 - `api`: FastAPI e migrations Alembic;
+- `frontend`: painel operacional React;
 - `worker`: sinais e gestão das posições Testnet;
 - `candle-worker`: sincronização incremental dos candles;
 - `indicator-worker`: cálculo idempotente dos indicadores;

@@ -1,4 +1,18 @@
 services:
+  frontend:
+    build:
+      context: ./frontend
+    container_name: tradebrain-frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend/app:/app/app
+    depends_on:
+      api:
+        condition: service_healthy
+
   api:
     build:
       context: ./backend
