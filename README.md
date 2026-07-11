@@ -20,6 +20,21 @@ Em celulares, o painel oferece navegação por toque e pode ser instalado pela
 opção "Adicionar à tela inicial" do navegador. O acesso continua dependente da
 API local; não há envio direto de ordens a partir da interface.
 
+## Acesso do operador
+
+Copie `.env.example` para `.env` e gere uma senha derivada, uma chave de sessão
+e o segredo TOTP sem armazenar a senha em texto aberto:
+
+```bash
+docker compose run --rm api python scripts/generate_auth_credentials.py
+```
+
+Adicione os três valores exibidos ao `.env`, defina `AUTH_OPERATOR_EMAIL` e
+cadastre `AUTH_TOTP_SECRET` em um aplicativo autenticador. O painel exige senha
+e código de seis dígitos. Alterações do modo operacional, parada de emergência,
+configurações de risco e ordens manuais também exigem sessão e proteção CSRF no
+backend.
+
 Serviços iniciados:
 
 - `api`: FastAPI e migrations Alembic;

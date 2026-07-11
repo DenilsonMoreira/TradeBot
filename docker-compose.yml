@@ -62,6 +62,7 @@ services:
     command: python -m app.workers.candle_worker
     volumes:
       - ./backend/app:/app/app
+      - ./backend/scripts:/app/scripts
       - model_artifacts:/app/artifacts
     depends_on:
       api:

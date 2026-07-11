@@ -1,4 +1,6 @@
-from fastapi import Depends
+import hmac
+
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.binance.client import BinanceTestnetClient
@@ -15,6 +17,8 @@ from app.services.training_service import TrainingService
 from app.ai.registry import ModelRegistry
 from app.services.ensemble_service import EnsembleService
 from app.services.prediction_service import PredictionService
+from app.api.routes.auth import COOKIE_NAME, auth_is_configured
+from app.core.security import OperatorSession, read_session
 
 
 def get_candle_service(db: Session = Depends(get_db)) -> CandleService:
@@ -55,3 +59,22 @@ def get_ensemble_service(db: Session = Depends(get_db)) -> EnsembleService:
 
 def get_prediction_service(db: Session = Depends(get_db)) -> PredictionService:
     return PredictionService(ResearchRepository(db))
+
+
+def get_operator_session(request: Request) -> OperatorSession:
+    if not auth_is_configured():
+        raise HTTPException(status_code=503, detail="Autenticação do operador não configurada.")
+    session = read_session(request.cookies.get(COOKIE_NAME, ""), settings.auth_secret_key)
+    if session is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sessão ausente ou expirada.")
+    return session
+
+
+def require_operator_csrf(
+    request: Request,
+    session: OperatorSession = Depends(get_operator_session),
+) -> OperatorSession:
+    csrf = request.headers.get("X-CSRF-Token", "")
+    if not hmac.compare_digest(csrf, session.csrf_token):
+        raise HTTPException(status_code=403, detail="Token CSRF inválido.")
+    return session

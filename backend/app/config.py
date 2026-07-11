@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     indicator_calculation_interval_seconds: int = 60
     model_artifact_dir: str = "/app/artifacts"
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    auth_secret_key: str = ""
+    auth_operator_email: str = ""
+    auth_password_hash: str = ""
+    auth_totp_secret: str = ""
+    auth_session_minutes: int = 30
+    auth_cookie_secure: bool = False
 
     model_config = SettingsConfigDict(
         env_file=".env",

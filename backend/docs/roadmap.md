@@ -103,7 +103,11 @@ Aplicativo
 
 ✔ Web app instalável com manifest e suporte a safe areas
 
-Pendente: aplicativo nativo, autenticação e segundo fator
+✔ Login do operador com senha derivada e TOTP
+
+✔ Sessão HTTP-only, expiração e proteção CSRF em ações críticas
+
+Pendente: aplicativo nativo e proteção de leitura para implantação pública
 
 ## Fase 16
 

@@ -9,9 +9,17 @@ type Position = { id: string; symbol: string; status: string; quantity: number; 
 type Candle = { id: number; symbol: string; interval: string; close: string; open_time: string; is_closed: boolean };
 type Model = { id: number; algorithm: string; status: string; metrics: Record<string, number | string | null> };
 type Backtest = { id: number; strategy: string; symbol: string; final_capital: string; metrics: Record<string, number | string | null> };
+type AuthSession = { authenticated: boolean; email: string; csrf_token: string };
+
+let csrfToken = "";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API}${path}`, { ...init, headers: { "Content-Type": "application/json", ...init?.headers } });
+  const method = init?.method?.toUpperCase() ?? "GET";
+  const response = await fetch(`${API}${path}`, {
+    ...init,
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...(method !== "GET" && csrfToken ? { "X-CSRF-Token": csrfToken } : {}), ...init?.headers },
+  });
   if (!response.ok) throw new Error(`API respondeu ${response.status}`);
   return response.json();
 }
@@ -29,6 +37,9 @@ export default function Home() {
   const [backtests, setBacktests] = useState<Backtest[]>([]);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
+  const [auth, setAuth] = useState<AuthSession | null>(null);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [loginError, setLoginError] = useState("");
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -53,7 +64,35 @@ export default function Home() {
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void request<AuthSession>("/auth/session")
+      .then((session) => { csrfToken = session.csrf_token; setAuth(session); void load(); })
+      .catch(() => setAuth(null))
+      .finally(() => setAuthChecking(false));
+  }, [load]);
+
+  const login = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setLoginError("");
+    const data = new FormData(event.currentTarget);
+    try {
+      const session = await request<AuthSession>("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email: data.get("email"), password: data.get("password"), totp_code: data.get("totp") }),
+      });
+      csrfToken = session.csrf_token;
+      setAuth(session);
+      await load();
+    } catch (cause) {
+      setLoginError(cause instanceof Error ? cause.message : "Falha na autenticação");
+    }
+  };
+
+  const logout = async () => {
+    await request("/auth/logout", { method: "POST" });
+    csrfToken = "";
+    setAuth(null);
+  };
 
   const emergencyStop = async () => {
     if (!window.confirm("Desligar o bot e bloquear novas entradas?")) return;
@@ -72,6 +111,10 @@ export default function Home() {
     return values.map((value, index) => `${(index / Math.max(values.length - 1, 1)) * 100},${88 - ((value - min) / span) * 72}`).join(" ");
   }, [candles]);
 
+  if (authChecking) return <main className="auth-shell"><div className="auth-card"><span className="brand-mark">TB</span><p>Validando sessão segura…</p></div></main>;
+
+  if (!auth) return <main className="auth-shell"><form className="auth-card" onSubmit={(event) => void login(event)}><span className="brand-mark">TB</span><div><p className="eyebrow">Acesso protegido</p><h1>TradeBrain</h1><p className="auth-copy">Entre com as credenciais do operador e o código de seis dígitos do seu autenticador.</p></div><label>E-mail<input name="email" type="email" autoComplete="username" required /></label><label>Senha<input name="password" type="password" autoComplete="current-password" minLength={12} required /></label><label>Código autenticador<input name="totp" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required /></label>{loginError && <p className="auth-error" role="alert">{loginError}</p>}<button type="submit">Entrar com segurança</button><small>O acesso expira automaticamente após o período configurado.</small></form></main>;
+
   return (
     <main className="app-shell">
       <aside className="sidebar">
@@ -85,7 +128,7 @@ export default function Home() {
       <section className="workspace">
         <header className="topbar">
           <div><p className="eyebrow">Centro de operações</p><h1>Bom dia, Denilson.</h1></div>
-          <div className="top-actions"><button className="ghost" onClick={() => void load()} disabled={busy}>{busy ? "Atualizando…" : "Atualizar"}</button><button className="emergency" onClick={() => void emergencyStop()}>Parada de emergência</button></div>
+          <div className="top-actions"><span className="operator">{auth.email}</span><button className="ghost" onClick={() => void load()} disabled={busy}>{busy ? "Atualizando…" : "Atualizar"}</button><button className="ghost" onClick={() => void logout()}>Sair</button><button className="emergency" onClick={() => void emergencyStop()}>Parada de emergência</button></div>
         </header>
 
         {error && <div className="notice"><strong>Conecte a API local.</strong><span>{error} · endereço esperado: {API}</span></div>}

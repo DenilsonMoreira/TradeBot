@@ -32,6 +32,8 @@ from app.services.trading_service import execute_market_buy, execute_market_sell
 from app.api.routes.candles import router as candles_router
 from app.api.routes.indicators import router as indicators_router
 from app.api.routes.research import router as research_router
+from app.api.routes.auth import router as auth_router
+from app.api.dependencies import require_operator_csrf
 
 
 @asynccontextmanager
@@ -83,6 +85,7 @@ app.add_middleware(
 app.include_router(candles_router)
 app.include_router(indicators_router)
 app.include_router(research_router)
+app.include_router(auth_router)
 
 binance = BinanceTestnetClient()
 
@@ -159,6 +162,7 @@ def get_bot_status(db: Session = Depends(get_db)):
 def update_bot_status(
     payload: BotModeUpdate,
     db: Session = Depends(get_db),
+    _session=Depends(require_operator_csrf),
 ):
     if (
         payload.mode == BotMode.TESTNET_TRADING
@@ -186,7 +190,7 @@ def update_bot_status(
 
 
 @app.post("/bot/emergency-stop", response_model=BotStatusResponse)
-def emergency_stop(db: Session = Depends(get_db)):
+def emergency_stop(db: Session = Depends(get_db), _session=Depends(require_operator_csrf)):
     status = db.get(BotStatus, 1)
 
     if status is None:
@@ -248,6 +252,7 @@ def list_signals(
 async def manual_buy(
     payload: ManualBuyRequest,
     db: Session = Depends(get_db),
+    _session=Depends(require_operator_csrf),
 ):
     status = db.get(BotStatus, 1)
 
@@ -289,6 +294,7 @@ async def manual_buy(
 async def manual_sell(
     payload: ManualSellRequest,
     db: Session = Depends(get_db),
+    _session=Depends(require_operator_csrf),
 ):
     status = db.get(BotStatus, 1)
 
@@ -373,6 +379,7 @@ def get_risk_settings(db: Session = Depends(get_db)):
 def update_risk_settings(
     payload: TradingRiskSettingsUpdate,
     db: Session = Depends(get_db),
+    _session=Depends(require_operator_csrf),
 ):
     if (
         payload.auto_entry_enabled
