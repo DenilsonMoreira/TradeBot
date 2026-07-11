@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.dependencies import get_backtest_service, get_dataset_service, get_research_repository, get_training_service
+from app.api.dependencies import get_backtest_service, get_dataset_service, get_model_registry, get_research_repository, get_training_service
+from app.ai.registry import ModelRegistry
 from app.backtest.engine import BacktestConfig
 from app.repositories.research_repository import ResearchRepository
 from app.schemas.research import BacktestRequest, BacktestResponse, DatasetRequest, DatasetResponse, ModelResponse, TrainingRequest
@@ -49,3 +50,33 @@ def train_models(payload: TrainingRequest, service: TrainingService = Depends(ge
 @router.get("/models", response_model=list[ModelResponse])
 def list_models(limit: int = Query(50, ge=1, le=200), repository: ResearchRepository = Depends(get_research_repository)):
     return repository.list_models(limit)
+
+
+@router.post("/models/{model_id}/promote", response_model=ModelResponse)
+def promote_model(
+    model_id: int,
+    registry: ModelRegistry = Depends(get_model_registry),
+):
+    try:
+        return registry.promote(model_id)
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from error
+
+
+@router.post("/models/{model_id}/deactivate", response_model=ModelResponse)
+def deactivate_model(
+    model_id: int,
+    registry: ModelRegistry = Depends(get_model_registry),
+):
+    try:
+        return registry.deactivate(model_id)
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from error
+
+
+@router.get("/datasets/{dataset_id}/models/active", response_model=ModelResponse | None)
+def get_active_model(
+    dataset_id: int,
+    registry: ModelRegistry = Depends(get_model_registry),
+):
+    return registry.get_active(dataset_id)

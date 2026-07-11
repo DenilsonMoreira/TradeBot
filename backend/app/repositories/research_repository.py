@@ -36,3 +36,28 @@ class ResearchRepository:
             .where(TrainedModel.dataset_id == dataset_id)
             .order_by(TrainedModel.algorithm)
         ).all()
+
+    def get_model_for_update(self, model_id: int):
+        return self.session.scalar(
+            select(TrainedModel)
+            .where(TrainedModel.id == model_id)
+            .with_for_update()
+        )
+
+    def get_active_model(self, dataset_id: int):
+        return self.session.scalar(
+            select(TrainedModel).where(
+                TrainedModel.dataset_id == dataset_id,
+                TrainedModel.status == "ACTIVE",
+            )
+        )
+
+    def get_active_model_for_update(self, dataset_id: int):
+        return self.session.scalar(
+            select(TrainedModel)
+            .where(
+                TrainedModel.dataset_id == dataset_id,
+                TrainedModel.status == "ACTIVE",
+            )
+            .with_for_update()
+        )

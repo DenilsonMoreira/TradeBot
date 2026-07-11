@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Numeric, String, UniqueConstraint, func
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Index, Numeric, String, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -43,6 +43,8 @@ class TrainedModel(Base):
     __tablename__ = "trained_models"
     __table_args__ = (
         UniqueConstraint("dataset_id", "algorithm", "version", name="uq_trained_models_dataset_algorithm_version"),
+        CheckConstraint("status IN ('CANDIDATE', 'ACTIVE', 'INACTIVE')", name="ck_trained_models_status"),
+        Index("uq_trained_models_one_active_per_dataset", "dataset_id", unique=True, postgresql_where=text("status = 'ACTIVE'")),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -51,4 +53,7 @@ class TrainedModel(Base):
     version: Mapped[str] = mapped_column(String(64), nullable=False)
     metrics: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     artifact_path: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="CANDIDATE", server_default="CANDIDATE")
+    promoted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

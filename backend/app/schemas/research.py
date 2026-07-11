@@ -59,5 +59,8 @@ class ModelResponse(BaseModel):
     version: str
     metrics: dict[str, Any]
     artifact_path: str
+    status: str
+    promoted_at: datetime | None
+    deactivated_at: datetime | None
     created_at: datetime
     model_config = {"from_attributes": True}
