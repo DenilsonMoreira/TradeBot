@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query
 
-from app.api.dependencies import get_indicator_service
+from app.api.dependencies import get_indicator_service, get_operator_session, require_operator_csrf
 from app.schemas.indicator import (
     IndicatorCalculateRequest,
     IndicatorCalculateResponse,
@@ -12,7 +12,7 @@ from app.services.indicator_service import IndicatorService
 router = APIRouter(prefix="/indicators", tags=["indicators"])
 
 
-@router.get("", response_model=list[IndicatorResponse])
+@router.get("", response_model=list[IndicatorResponse], dependencies=[Depends(get_operator_session)])
 def get_indicators(
     symbol: str = Query(min_length=5, max_length=20),
     interval: str = Query(min_length=2, max_length=10),
@@ -32,7 +32,7 @@ def get_indicators(
     )
 
 
-@router.post("/calculate", response_model=IndicatorCalculateResponse)
+@router.post("/calculate", response_model=IndicatorCalculateResponse, dependencies=[Depends(require_operator_csrf)])
 def calculate_indicators(
     payload: IndicatorCalculateRequest,
     service: IndicatorService = Depends(get_indicator_service),

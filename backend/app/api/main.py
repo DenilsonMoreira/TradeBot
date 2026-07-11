@@ -33,7 +33,7 @@ from app.api.routes.candles import router as candles_router
 from app.api.routes.indicators import router as indicators_router
 from app.api.routes.research import router as research_router
 from app.api.routes.auth import router as auth_router
-from app.api.dependencies import require_operator_csrf
+from app.api.dependencies import get_operator_session, require_operator_csrf
 
 
 @asynccontextmanager
@@ -100,7 +100,7 @@ async def health():
     }
 
 
-@app.get("/market/{symbol}/candles")
+@app.get("/market/{symbol}/candles", dependencies=[Depends(get_operator_session)])
 async def market_candles(
     symbol: str,
     interval: str = Query(default="15m"),
@@ -118,7 +118,7 @@ async def market_candles(
         raise HTTPException(status_code=502, detail=str(error))
 
 
-@app.get("/account/balance")
+@app.get("/account/balance", dependencies=[Depends(get_operator_session)])
 async def account_balance():
     try:
         account = await binance.get_account()
@@ -145,7 +145,7 @@ async def account_balance():
         )
 
 
-@app.get("/bot/status", response_model=BotStatusResponse)
+@app.get("/bot/status", response_model=BotStatusResponse, dependencies=[Depends(get_operator_session)])
 def get_bot_status(db: Session = Depends(get_db)):
     status = db.get(BotStatus, 1)
 
@@ -204,7 +204,7 @@ def emergency_stop(db: Session = Depends(get_db), _session=Depends(require_opera
     return status
 
 
-@app.post("/signals", response_model=SignalResponse, status_code=201)
+@app.post("/signals", response_model=SignalResponse, status_code=201, dependencies=[Depends(require_operator_csrf)])
 def create_signal(
     payload: SignalCreate,
     db: Session = Depends(get_db),
@@ -225,7 +225,7 @@ def create_signal(
     return signal
 
 
-@app.get("/signals", response_model=list[SignalResponse])
+@app.get("/signals", response_model=list[SignalResponse], dependencies=[Depends(get_operator_session)])
 def list_signals(
     symbol: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
@@ -328,7 +328,7 @@ async def manual_sell(
         )
 
 
-@app.get("/orders", response_model=list[OrderResponse])
+@app.get("/orders", response_model=list[OrderResponse], dependencies=[Depends(get_operator_session)])
 def list_orders(
     limit: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
@@ -337,7 +337,7 @@ def list_orders(
     return list(db.scalars(statement).all())
 
 
-@app.get("/positions", response_model=list[PositionResponse])
+@app.get("/positions", response_model=list[PositionResponse], dependencies=[Depends(get_operator_session)])
 def list_positions(
     status: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
@@ -359,6 +359,7 @@ def list_positions(
 @app.get(
     "/trading/risk-settings",
     response_model=TradingRiskSettingsResponse,
+    dependencies=[Depends(get_operator_session)],
 )
 def get_risk_settings(db: Session = Depends(get_db)):
     risk_settings = db.get(TradingRiskSettings, 1)

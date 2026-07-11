@@ -107,7 +107,11 @@ Aplicativo
 
 ✔ Sessão HTTP-only, expiração e proteção CSRF em ações críticas
 
-Pendente: aplicativo nativo e proteção de leitura para implantação pública
+✔ Proteção autenticada das consultas operacionais e dados de pesquisa
+
+✔ Proteção CSRF em sincronização, cálculo, treinamento e ciclo de modelos
+
+Pendente: aplicativo nativo
 
 ## Fase 16
 

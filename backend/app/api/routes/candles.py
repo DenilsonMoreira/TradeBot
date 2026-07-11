@@ -1,6 +1,6 @@
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
-from app.api.dependencies import get_candle_service
+from app.api.dependencies import get_candle_service, get_operator_session, require_operator_csrf
 from app.schemas.candle import (
     CandleResponse,
     CandleSyncRequest,
@@ -12,7 +12,7 @@ from app.services.candle_service import CandleService
 router = APIRouter(prefix="/candles", tags=["candles"])
 
 
-@router.get("", response_model=list[CandleResponse])
+@router.get("", response_model=list[CandleResponse], dependencies=[Depends(get_operator_session)])
 def get_candles(
     symbol: str = Query(min_length=5, max_length=20),
     interval: str = Query(min_length=2, max_length=10),
@@ -30,7 +30,7 @@ def get_candles(
     )
 
 
-@router.get("/latest", response_model=CandleResponse)
+@router.get("/latest", response_model=CandleResponse, dependencies=[Depends(get_operator_session)])
 def get_latest_candle(
     symbol: str = Query(min_length=5, max_length=20),
     interval: str = Query(min_length=2, max_length=10),
@@ -47,7 +47,7 @@ def get_latest_candle(
     return candle
 
 
-@router.post("/sync", response_model=CandleSyncResponse)
+@router.post("/sync", response_model=CandleSyncResponse, dependencies=[Depends(require_operator_csrf)])
 async def sync_candles(
     payload: CandleSyncRequest,
     service: CandleService = Depends(get_candle_service),
