@@ -53,7 +53,11 @@ Indicadores
 
 ✔ Random Forest
 
-Pendente: XGBoost, LightGBM e CatBoost (build dos runtimes não concluído no ambiente atual)
+✔ XGBoost CPU
+
+✔ LightGBM
+
+✔ CatBoost
 
 ✔ Métricas estatísticas e financeiras
 

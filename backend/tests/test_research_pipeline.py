@@ -45,6 +45,26 @@ def test_training_compares_baseline_and_models(tmp_path):
         "baseline",
         "logistic_regression",
         "random_forest",
+        "xgboost",
+        "lightgbm",
+        "catboost",
     }
     assert all("strategy_return" in metrics for _, metrics, _ in results)
     assert all((tmp_path / f"test-dataset-{name}.joblib").exists() for name, _, _ in results)
+
+
+def test_training_can_select_only_missing_algorithms(tmp_path):
+    rows = build_rows(candles(180), horizon=1)
+    results = train_candidates(
+        rows,
+        list(rows[0]["features"]),
+        int(len(rows) * 0.8),
+        str(tmp_path),
+        "incremental",
+        algorithms={"xgboost", "lightgbm", "catboost"},
+    )
+    assert {name for name, _, _ in results} == {
+        "xgboost",
+        "lightgbm",
+        "catboost",
+    }

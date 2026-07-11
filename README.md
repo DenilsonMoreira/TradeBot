@@ -54,6 +54,9 @@ Backtests incluem taxas e slippage e executam sinais somente no candle
 seguinte. Datasets usam divisão temporal. Modelos treinados não possuem
 acesso ao serviço de execução de ordens.
 
+Modelos disponíveis: baseline, Logistic Regression, Random Forest,
+XGBoost CPU, LightGBM e CatBoost.
+
 ## Testes
 
 ```bash
