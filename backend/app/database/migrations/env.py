@@ -6,6 +6,7 @@ from sqlalchemy import engine_from_config, pool
 from app.config import settings
 from app.database import Base
 from app.models.candle import Candle  # noqa: F401
+from app.models.indicator import Indicator  # noqa: F401
 
 
 config = context.config
