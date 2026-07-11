@@ -65,7 +65,15 @@ Indicadores
 
 ## Fase 13
 
-Ensemble
+✔ Ciclo de vida do Model Registry
+
+✔ Promoção e desativação
+
+✔ Soft voting por probabilidades
+
+✔ Avaliação no teste temporal
+
+Pendente: inferência versionada e política de seleção automática
 
 ## Fase 14
 

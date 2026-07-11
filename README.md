@@ -57,6 +57,15 @@ acesso ao serviço de execução de ordens.
 Modelos disponíveis: baseline, Logistic Regression, Random Forest,
 XGBoost CPU, LightGBM e CatBoost.
 
+Ensembles podem ser avaliados sem promoção automática:
+
+```text
+POST /ensembles/evaluate
+POST /models/{model_id}/promote
+POST /models/{model_id}/deactivate
+GET  /datasets/{dataset_id}/models/active
+```
+
 ## Testes
 
 ```bash

@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.dependencies import get_backtest_service, get_dataset_service, get_model_registry, get_research_repository, get_training_service
+from app.api.dependencies import get_backtest_service, get_dataset_service, get_ensemble_service, get_model_registry, get_research_repository, get_training_service
 from app.ai.registry import ModelRegistry
 from app.backtest.engine import BacktestConfig
 from app.repositories.research_repository import ResearchRepository
-from app.schemas.research import BacktestRequest, BacktestResponse, DatasetRequest, DatasetResponse, ModelResponse, TrainingRequest
+from app.schemas.research import BacktestRequest, BacktestResponse, DatasetRequest, DatasetResponse, EnsembleRequest, ModelResponse, TrainingRequest
+from app.services.ensemble_service import EnsembleService
 from app.services.backtest_service import BacktestService
 from app.services.dataset_service import DatasetService
 from app.services.training_service import TrainingService
@@ -80,3 +81,18 @@ def get_active_model(
     registry: ModelRegistry = Depends(get_model_registry),
 ):
     return registry.get_active(dataset_id)
+
+
+@router.post("/ensembles/evaluate", response_model=ModelResponse)
+def evaluate_ensemble(
+    payload: EnsembleRequest,
+    service: EnsembleService = Depends(get_ensemble_service),
+):
+    try:
+        return service.evaluate(
+            payload.dataset_id,
+            model_ids=payload.model_ids,
+            threshold=payload.threshold,
+        )
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error

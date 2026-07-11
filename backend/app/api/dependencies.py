@@ -13,6 +13,7 @@ from app.services.backtest_service import BacktestService
 from app.services.dataset_service import DatasetService
 from app.services.training_service import TrainingService
 from app.ai.registry import ModelRegistry
+from app.services.ensemble_service import EnsembleService
 
 
 def get_candle_service(db: Session = Depends(get_db)) -> CandleService:
@@ -45,3 +46,7 @@ def get_training_service(db: Session = Depends(get_db)) -> TrainingService:
 
 def get_model_registry(db: Session = Depends(get_db)) -> ModelRegistry:
     return ModelRegistry(ResearchRepository(db))
+
+
+def get_ensemble_service(db: Session = Depends(get_db)) -> EnsembleService:
+    return EnsembleService(ResearchRepository(db), settings.model_artifact_dir)

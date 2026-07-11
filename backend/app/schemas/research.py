@@ -52,6 +52,12 @@ class TrainingRequest(BaseModel):
     dataset_id: int = Field(gt=0)
 
 
+class EnsembleRequest(BaseModel):
+    dataset_id: int = Field(gt=0)
+    model_ids: list[int] | None = None
+    threshold: float = Field(default=0.5, gt=0, lt=1)
+
+
 class ModelResponse(BaseModel):
     id: int
     dataset_id: int

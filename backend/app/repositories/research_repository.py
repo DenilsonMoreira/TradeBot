@@ -37,6 +37,29 @@ class ResearchRepository:
             .order_by(TrainedModel.algorithm)
         ).all()
 
+    def get_models_by_ids(self, model_ids: list[int]):
+        if not model_ids:
+            return []
+        return self.session.scalars(
+            select(TrainedModel)
+            .where(TrainedModel.id.in_(model_ids))
+            .order_by(TrainedModel.id)
+        ).all()
+
+    def get_model_by_identity(
+        self,
+        dataset_id: int,
+        algorithm: str,
+        version: str,
+    ):
+        return self.session.scalar(
+            select(TrainedModel).where(
+                TrainedModel.dataset_id == dataset_id,
+                TrainedModel.algorithm == algorithm,
+                TrainedModel.version == version,
+            )
+        )
+
     def get_model_for_update(self, model_id: int):
         return self.session.scalar(
             select(TrainedModel)
