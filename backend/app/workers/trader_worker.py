@@ -4,10 +4,10 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from app.binance_client import BinanceTestnetClient
+from app.binance.client import BinanceTestnetClient
 from app.database import Base, SessionLocal, engine
 from app.models import BotMode, BotStatus, Position, PositionStatus, Signal
-from app.trading_service import (
+from app.services.trading_service import (
     can_open_automatic_position,
     execute_market_buy,
     execute_market_sell,

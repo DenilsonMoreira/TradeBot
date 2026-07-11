@@ -64,6 +64,36 @@ class CandleService:
         except (InvalidOperation, TypeError, ValueError, OverflowError) as error:
             raise ValueError("Payload de candle da Binance inválido") from error
 
+    def get_history(
+        self,
+        symbol: str,
+        interval: str,
+        *,
+        limit: int = 500,
+        offset: int = 0,
+        closed_only: bool = True,
+    ) -> Sequence[Candle]:
+        return self.repository.get_history(
+            symbol,
+            interval,
+            limit=limit,
+            offset=offset,
+            closed_only=closed_only,
+        )
+
+    def get_latest(
+        self,
+        symbol: str,
+        interval: str,
+        *,
+        closed_only: bool = False,
+    ) -> Candle | None:
+        return self.repository.get_latest(
+            symbol,
+            interval,
+            closed_only=closed_only,
+        )
+
     async def sync_history(
         self,
         symbol: str,

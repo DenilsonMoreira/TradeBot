@@ -4,7 +4,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.binance_client import BinanceTestnetClient
+from app.binance.client import BinanceTestnetClient
 from app.config import settings
 from app.database import Base, SessionLocal, engine, get_db
 from app.models import (
@@ -27,11 +27,14 @@ from app.schemas import (
     TradingRiskSettingsResponse,
     TradingRiskSettingsUpdate,
 )
-from app.trading_service import execute_market_buy, execute_market_sell
+from app.services.trading_service import execute_market_buy, execute_market_sell
+from app.api.routes.candles import router as candles_router
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    # Compatibilidade temporária para as tabelas legadas (fases 1–7).
+    # Novas alterações de schema, como candles, são aplicadas por Alembic.
     Base.metadata.create_all(bind=engine)
 
     with SessionLocal() as db:
@@ -63,6 +66,7 @@ app = FastAPI(
     description="Bot de trading em modo Binance Spot Testnet",
     lifespan=lifespan,
 )
+app.include_router(candles_router)
 
 binance = BinanceTestnetClient()
 

@@ -5,7 +5,7 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 
-from app.binance_client import BinanceTestnetClient
+from app.binance.client import BinanceTestnetClient
 from app.models import (
     Order,
     OrderStatus,
