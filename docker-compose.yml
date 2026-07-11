@@ -48,6 +48,7 @@ services:
     command: python -m app.workers.candle_worker
     volumes:
       - ./backend/app:/app/app
+      - model_artifacts:/app/artifacts
     depends_on:
       api:
         condition: service_healthy
@@ -91,3 +92,4 @@ services:
 
 volumes:
   postgres_data:
+  model_artifacts:

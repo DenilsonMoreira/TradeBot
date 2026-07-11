@@ -30,6 +30,7 @@ from app.schemas import (
 from app.services.trading_service import execute_market_buy, execute_market_sell
 from app.api.routes.candles import router as candles_router
 from app.api.routes.indicators import router as indicators_router
+from app.api.routes.research import router as research_router
 
 
 @asynccontextmanager
@@ -69,6 +70,7 @@ app = FastAPI(
 )
 app.include_router(candles_router)
 app.include_router(indicators_router)
+app.include_router(research_router)
 
 binance = BinanceTestnetClient()
 

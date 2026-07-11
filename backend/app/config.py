@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     candle_sync_interval_seconds: int = 60
     indicator_history_limit: int = 1000
     indicator_calculation_interval_seconds: int = 60
+    model_artifact_dir: str = "/app/artifacts"
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -31,15 +31,33 @@ Indicadores
 
 ## Fase 10
 
-Backtest
+✔ Backtest sem look-ahead
+
+✔ Taxas, slippage, operações e métricas
+
+✔ Persistência e API
 
 ## Fase 11
 
-Dataset IA
+✔ Features e labels reproduzíveis
+
+✔ Divisão temporal sem leakage
+
+✔ Versionamento e API
 
 ## Fase 12
 
-Treinamento
+✔ Baseline
+
+✔ Logistic Regression
+
+✔ Random Forest
+
+Pendente: XGBoost, LightGBM e CatBoost (build dos runtimes não concluído no ambiente atual)
+
+✔ Métricas estatísticas e financeiras
+
+✔ Registry local de artefatos e API
 
 ## Fase 13
 

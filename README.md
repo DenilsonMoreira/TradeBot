@@ -39,6 +39,21 @@ POST /indicators/calculate
 
 Indicadores disponíveis: EMA 9/21, RSI 14, MACD, ATR 14 e ADX 14.
 
+## Pesquisa quantitativa
+
+```text
+POST /backtests/run
+GET  /backtests
+POST /datasets/build
+GET  /datasets
+POST /models/train
+GET  /models
+```
+
+Backtests incluem taxas e slippage e executam sinais somente no candle
+seguinte. Datasets usam divisão temporal. Modelos treinados não possuem
+acesso ao serviço de execução de ordens.
+
 ## Testes
 
 ```bash
