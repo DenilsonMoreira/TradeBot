@@ -35,6 +35,12 @@ e código de seis dígitos. Alterações do modo operacional, parada de emergên
 configurações de risco e ordens manuais também exigem sessão e proteção CSRF no
 backend.
 
+O gerador apresenta `AUTH_PASSWORD_HASH` com `$$` de propósito: essa é a forma
+de preservar os separadores `$` do hash quando o Docker Compose lê o `.env`.
+Ele também cria `backend/scripts/tradebrain-authenticator.png`; abra a imagem,
+escaneie-a no aplicativo autenticador e apague o arquivo após concluir o
+cadastro. O QR Code contém o segredo TOTP e é ignorado pelo Git.
+
 Serviços iniciados:
 
 - `api`: FastAPI e migrations Alembic;
