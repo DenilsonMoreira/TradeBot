@@ -1,7 +1,7 @@
 # TradeBrain
 
-Plataforma quantitativa para Binance Spot Testnet. A Fase 8 fornece um
-Data Lake idempotente de candles em PostgreSQL.
+Plataforma quantitativa para Binance Spot Testnet, com Data Lake de candles
+e indicadores técnicos persistidos e versionados em PostgreSQL.
 
 ## Executar
 
@@ -19,6 +19,7 @@ Serviços iniciados:
 - `api`: FastAPI e migrations Alembic;
 - `worker`: sinais e gestão das posições Testnet;
 - `candle-worker`: sincronização incremental dos candles;
+- `indicator-worker`: cálculo idempotente dos indicadores;
 - `db`: PostgreSQL 16.
 
 ## API de candles
@@ -28,6 +29,15 @@ GET  /candles
 GET  /candles/latest
 POST /candles/sync
 ```
+
+## API de indicadores
+
+```text
+GET  /indicators
+POST /indicators/calculate
+```
+
+Indicadores disponíveis: EMA 9/21, RSI 14, MACD, ATR 14 e ADX 14.
 
 ## Testes
 

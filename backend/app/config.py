@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     candle_intervals: str = "15m"
     candle_sync_limit: int = 500
     candle_sync_interval_seconds: int = 60
+    indicator_history_limit: int = 1000
+    indicator_calculation_interval_seconds: int = 60
 
     model_config = SettingsConfigDict(
         env_file=".env",

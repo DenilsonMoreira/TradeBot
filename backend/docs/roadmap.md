@@ -13,15 +13,21 @@ Data Lake
 
 Indicadores
 
-EMA
+✔ Modelo e migration versionados
 
-RSI
+✔ EMA
 
-MACD
+✔ RSI
 
-ATR
+✔ MACD
 
-ADX
+✔ ATR
+
+✔ ADX
+
+✔ Repository e persistência idempotente
+
+✔ API e worker
 
 ## Fase 10
 
