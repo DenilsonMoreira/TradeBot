@@ -33,10 +33,12 @@ from app.api.routes.candles import router as candles_router
 from app.api.routes.indicators import router as indicators_router
 from app.api.routes.research import router as research_router
 from app.api.routes.auth import router as auth_router
-from app.api.dependencies import get_audit_service, get_operator_session, require_operator_csrf
+from app.api.dependencies import get_audit_service, get_notification_service, get_operator_session, require_operator_csrf
 from app.api.routes.audit import router as audit_router
 from app.core.security import OperatorSession
 from app.services.audit_service import AuditService
+from app.api.routes.notifications import router as notifications_router
+from app.services.notification_service import NotificationService
 
 
 @asynccontextmanager
@@ -90,6 +92,7 @@ app.include_router(indicators_router)
 app.include_router(research_router)
 app.include_router(auth_router)
 app.include_router(audit_router)
+app.include_router(notifications_router)
 
 binance = BinanceTestnetClient()
 
@@ -168,6 +171,7 @@ def update_bot_status(
     db: Session = Depends(get_db),
     session: OperatorSession = Depends(require_operator_csrf),
     audit: AuditService = Depends(get_audit_service),
+    notifications: NotificationService = Depends(get_notification_service),
 ):
     if (
         payload.mode == BotMode.TESTNET_TRADING
@@ -191,12 +195,13 @@ def update_bot_status(
 
     db.flush()
     audit.record(session.email, "BOT_MODE_CHANGED", "bot", resource_id="1", details={"mode": payload.mode.value})
+    notifications.create(session.email, "INFO", "BOT_MODE_CHANGED", "Modo operacional alterado", f"O bot foi alterado para {payload.mode.value}.", resource_id="1")
     db.refresh(status)
     return status
 
 
 @app.post("/bot/emergency-stop", response_model=BotStatusResponse)
-def emergency_stop(db: Session = Depends(get_db), session: OperatorSession = Depends(require_operator_csrf), audit: AuditService = Depends(get_audit_service)):
+def emergency_stop(db: Session = Depends(get_db), session: OperatorSession = Depends(require_operator_csrf), audit: AuditService = Depends(get_audit_service), notifications: NotificationService = Depends(get_notification_service)):
     status = db.get(BotStatus, 1)
 
     if status is None:
@@ -207,6 +212,7 @@ def emergency_stop(db: Session = Depends(get_db), session: OperatorSession = Dep
 
     db.flush()
     audit.record(session.email, "EMERGENCY_STOP", "bot", resource_id="1", details={"mode": "OFF"})
+    notifications.create(session.email, "CRITICAL", "EMERGENCY_STOP", "Parada de emergência acionada", "O bot foi desligado e novas entradas foram bloqueadas.", resource_id="1")
     db.refresh(status)
     return status
 
@@ -261,6 +267,7 @@ async def manual_buy(
     db: Session = Depends(get_db),
     session: OperatorSession = Depends(require_operator_csrf),
     audit: AuditService = Depends(get_audit_service),
+    notifications: NotificationService = Depends(get_notification_service),
 ):
     status = db.get(BotStatus, 1)
 
@@ -286,6 +293,7 @@ async def manual_buy(
             quote_amount=payload.quote_amount,
         )
         audit.record(session.email, "MANUAL_BUY", "order", resource_id=str(order.id), details={"symbol": order.symbol, "quote_amount": payload.quote_amount, "environment": "testnet"})
+        notifications.create(session.email, "INFO", "MANUAL_BUY", "Compra Testnet executada", f"Compra manual de {order.symbol} solicitada com US$ {payload.quote_amount:.2f}.", resource_id=str(order.id))
         return order
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
@@ -306,6 +314,7 @@ async def manual_sell(
     db: Session = Depends(get_db),
     session: OperatorSession = Depends(require_operator_csrf),
     audit: AuditService = Depends(get_audit_service),
+    notifications: NotificationService = Depends(get_notification_service),
 ):
     status = db.get(BotStatus, 1)
 
@@ -331,6 +340,7 @@ async def manual_sell(
             close_reason="MANUAL",
         )
         audit.record(session.email, "MANUAL_SELL", "order", resource_id=str(order.id), details={"symbol": order.symbol, "environment": "testnet"})
+        notifications.create(session.email, "INFO", "MANUAL_SELL", "Venda Testnet executada", f"Venda manual de {order.symbol} registrada.", resource_id=str(order.id))
         return order
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
@@ -395,6 +405,7 @@ def update_risk_settings(
     db: Session = Depends(get_db),
     session: OperatorSession = Depends(require_operator_csrf),
     audit: AuditService = Depends(get_audit_service),
+    notifications: NotificationService = Depends(get_notification_service),
 ):
     if (
         payload.auto_entry_enabled
@@ -424,5 +435,6 @@ def update_risk_settings(
 
     db.flush()
     audit.record(session.email, "RISK_SETTINGS_CHANGED", "risk_settings", resource_id="1", details={"auto_entry_enabled": payload.auto_entry_enabled, "max_quote_amount_per_trade": payload.max_quote_amount_per_trade, "max_daily_loss": payload.max_daily_loss, "max_open_positions": payload.max_open_positions, "cooldown_minutes": payload.cooldown_minutes})
+    notifications.create(session.email, "WARNING", "RISK_SETTINGS_CHANGED", "Limites de risco atualizados", f"Perda diária máxima: US$ {payload.max_daily_loss:.2f}; cooldown: {payload.cooldown_minutes} minutos.", resource_id="1")
     db.refresh(risk_settings)
     return risk_settings

@@ -15,6 +15,7 @@ type Account = { environment: string; balances: Balance[] };
 type RiskSettings = { auto_entry_enabled: boolean; max_quote_amount_per_trade: number; max_daily_loss: number; max_open_positions: number; cooldown_minutes: number; updated_at: string };
 type Signal = { id: string; symbol: string; signal_type: string; confidence: number | null; strategy_name: string; created_at: string };
 type AuditEvent = { id: number; actor: string; action: string; resource: string; resource_id: string | null; details: Record<string, unknown>; created_at: string };
+type Notification = { id: number; severity: string; category: string; title: string; message: string; resource_id: string | null; read_at: string | null; created_at: string };
 
 let csrfToken = "";
 
@@ -54,12 +55,13 @@ export default function Home() {
   const [quoteAmount, setQuoteAmount] = useState(20);
   const [operation, setOperation] = useState("");
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   const load = useCallback(async () => {
     setBusy(true);
     setError("");
     try {
-      const [nextStatus, nextPositions, nextCandles, nextModels, nextBacktests, nextRisk, nextSignals, nextAuditEvents] = await Promise.all([
+      const [nextStatus, nextPositions, nextCandles, nextModels, nextBacktests, nextRisk, nextSignals, nextAuditEvents, nextNotifications] = await Promise.all([
         request<BotStatus>("/bot/status"),
         request<Position[]>("/positions?limit=20"),
         request<Candle[]>("/candles?symbol=BTCUSDT&interval=15m&limit=32&closed_only=true"),
@@ -68,6 +70,7 @@ export default function Home() {
         request<RiskSettings>("/trading/risk-settings"),
         request<Signal[]>("/signals?limit=8"),
         request<AuditEvent[]>("/audit-events?limit=12"),
+        request<Notification[]>("/notifications?limit=12"),
       ]);
       setStatus(nextStatus);
       setPositions(nextPositions);
@@ -77,6 +80,7 @@ export default function Home() {
       setRisk(nextRisk);
       setSignals(nextSignals);
       setAuditEvents(nextAuditEvents);
+      setNotifications(nextNotifications);
       void request<Account>("/account/balance").then(setAccount).catch(() => setAccount(null));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível carregar o painel");
@@ -150,6 +154,16 @@ export default function Home() {
     await runOperation("Venda Testnet", () => request("/trading/manual-sell", { method: "POST", body: JSON.stringify({ confirmation: "VENDER BTC TESTNET" }) }));
   };
 
+  const markNotificationRead = async (id: number) => {
+    await request(`/notifications/${id}/read`, { method: "POST" });
+    setNotifications((current) => current.map((item) => item.id === id ? { ...item, read_at: new Date().toISOString() } : item));
+  };
+
+  const markAllNotificationsRead = async () => {
+    await request("/notifications/read-all", { method: "POST" });
+    setNotifications((current) => current.map((item) => ({ ...item, read_at: item.read_at ?? new Date().toISOString() })));
+  };
+
   const lastPrice = candles.at(-1)?.close;
   const activePositions = positions.filter((item) => item.status === "OPEN");
   const realized = positions.reduce((total, item) => total + Number(item.realized_pnl ?? 0), 0);
@@ -170,7 +184,7 @@ export default function Home() {
       <aside className="sidebar">
         <div className="brand"><span className="brand-mark">TB</span><div><strong>TradeBrain</strong><small>Quantitative desk</small></div></div>
         <nav aria-label="Navegação principal">
-          <a className="active" href="#overview">Visão geral</a><a href="#market">Mercado</a><a href="#operations">Operação</a><a href="#positions">Posições</a><a href="#audit">Auditoria</a><a href="#research">Pesquisa & IA</a>
+          <a className="active" href="#overview">Visão geral</a><a href="#market">Mercado</a><a href="#operations">Operação</a><a href="#positions">Posições</a><a href="#notifications">Notificações</a><a href="#audit">Auditoria</a><a href="#research">Pesquisa & IA</a>
         </nav>
         <div className="sidebar-foot"><span className={`pulse ${error ? "danger" : ""}`} />{error ? "API desconectada" : "Binance Testnet"}</div>
       </aside>
@@ -178,7 +192,7 @@ export default function Home() {
       <section className="workspace">
         <header className="topbar">
           <div><p className="eyebrow">Centro de operações</p><h1>Bom dia, Denilson.</h1></div>
-          <div className="top-actions"><span className="operator">{auth.email}</span><button className="ghost" onClick={() => void load()} disabled={busy}>{busy ? "Atualizando…" : "Atualizar"}</button><button className="ghost" onClick={() => void logout()}>Sair</button><button className="emergency" onClick={() => void emergencyStop()}>Parada de emergência</button></div>
+          <div className="top-actions"><a className="notification-link" href="#notifications" aria-label={`${notifications.filter((item) => !item.read_at).length} notificações não lidas`}>Alertas <b>{notifications.filter((item) => !item.read_at).length}</b></a><span className="operator">{auth.email}</span><button className="ghost" onClick={() => void load()} disabled={busy}>{busy ? "Atualizando…" : "Atualizar"}</button><button className="ghost" onClick={() => void logout()}>Sair</button><button className="emergency" onClick={() => void emergencyStop()}>Parada de emergência</button></div>
         </header>
 
         {error && <div className="notice"><strong>Conecte a API local.</strong><span>{error} · endereço esperado: {API}</span></div>}
@@ -210,6 +224,8 @@ export default function Home() {
         </section>
 
         <section className="panel audit-panel" id="audit"><div className="panel-title"><div><p className="eyebrow">Rastreabilidade</p><h3>Auditoria operacional</h3></div><span>{auditEvents.length} eventos recentes</span></div><div className="audit-list">{auditEvents.length ? auditEvents.map((event) => <div className="audit-row" key={event.id}><span className="audit-dot" /><div><strong>{event.action.replaceAll("_", " ")}</strong><small>{event.actor} · {event.resource}{event.resource_id ? ` #${event.resource_id}` : ""}</small></div><time dateTime={event.created_at}>{new Date(event.created_at).toLocaleString("pt-BR")}</time></div>) : <p className="empty-inline">As próximas ações operacionais aparecerão aqui.</p>}</div></section>
+
+        <section className="panel notifications-panel" id="notifications"><div className="panel-title"><div><p className="eyebrow">Central interna</p><h3>Notificações operacionais</h3></div><button className="text-button" onClick={() => void markAllNotificationsRead()} disabled={!notifications.some((item) => !item.read_at)}>Marcar todas como lidas</button></div><div className="notifications-list">{notifications.length ? notifications.map((item) => <article className={`notification-item ${item.read_at ? "read" : "unread"}`} key={item.id}><span className={`severity ${item.severity.toLowerCase()}`}>{item.severity}</span><div><strong>{item.title}</strong><p>{item.message}</p><time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString("pt-BR")}</time></div>{!item.read_at && <button onClick={() => void markNotificationRead(item.id)}>Marcar como lida</button>}</article>) : <p className="empty-inline">Nenhuma notificação operacional.</p>}</div></section>
 
         <section className="hero-grid" id="overview">
           <article className="market-card" id="market">

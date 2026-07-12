@@ -21,6 +21,8 @@ from app.api.routes.auth import COOKIE_NAME, auth_is_configured
 from app.core.security import OperatorSession, read_session
 from app.repositories.audit_repository import AuditRepository
 from app.services.audit_service import AuditService
+from app.repositories.notification_repository import NotificationRepository
+from app.services.notification_service import NotificationService
 
 
 def get_candle_service(db: Session = Depends(get_db)) -> CandleService:
@@ -65,6 +67,10 @@ def get_prediction_service(db: Session = Depends(get_db)) -> PredictionService:
 
 def get_audit_service(db: Session = Depends(get_db)) -> AuditService:
     return AuditService(AuditRepository(db))
+
+
+def get_notification_service(db: Session = Depends(get_db)) -> NotificationService:
+    return NotificationService(NotificationRepository(db))
 
 
 def get_operator_session(request: Request) -> OperatorSession:

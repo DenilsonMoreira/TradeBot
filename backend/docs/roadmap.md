@@ -131,7 +131,11 @@ Web operacional
 
 ✔ Auditoria operacional persistente e autenticada
 
-Pendente: notificações e implantação HTTPS
+✔ Central de notificações internas por operador
+
+✔ Severidade, contador de não lidas e confirmação de leitura
+
+Pendente: implantação HTTPS
 
 
 # O que muda no nosso desenvolvimento?
