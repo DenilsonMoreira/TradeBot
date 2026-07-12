@@ -10,6 +10,10 @@ type Candle = { id: number; symbol: string; interval: string; close: string; ope
 type Model = { id: number; algorithm: string; status: string; metrics: Record<string, number | string | null> };
 type Backtest = { id: number; strategy: string; symbol: string; final_capital: string; metrics: Record<string, number | string | null> };
 type AuthSession = { authenticated: boolean; email: string; csrf_token: string };
+type Balance = { asset: string; free: string; locked: string };
+type Account = { environment: string; balances: Balance[] };
+type RiskSettings = { auto_entry_enabled: boolean; max_quote_amount_per_trade: number; max_daily_loss: number; max_open_positions: number; cooldown_minutes: number; updated_at: string };
+type Signal = { id: string; symbol: string; signal_type: string; confidence: number | null; strategy_name: string; created_at: string };
 
 let csrfToken = "";
 
@@ -20,8 +24,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     credentials: "include",
     headers: { "Content-Type": "application/json", ...(method !== "GET" && csrfToken ? { "X-CSRF-Token": csrfToken } : {}), ...init?.headers },
   });
-  if (!response.ok) throw new Error(`API respondeu ${response.status}`);
-  return response.json();
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.detail ?? `API respondeu ${response.status}`);
+  }
+  return response.status === 204 ? undefined as T : response.json();
 }
 
 function money(value: number | string | null | undefined) {
@@ -40,23 +47,33 @@ export default function Home() {
   const [auth, setAuth] = useState<AuthSession | null>(null);
   const [authChecking, setAuthChecking] = useState(true);
   const [loginError, setLoginError] = useState("");
+  const [account, setAccount] = useState<Account | null>(null);
+  const [risk, setRisk] = useState<RiskSettings | null>(null);
+  const [signals, setSignals] = useState<Signal[]>([]);
+  const [quoteAmount, setQuoteAmount] = useState(20);
+  const [operation, setOperation] = useState("");
 
   const load = useCallback(async () => {
     setBusy(true);
     setError("");
     try {
-      const [nextStatus, nextPositions, nextCandles, nextModels, nextBacktests] = await Promise.all([
+      const [nextStatus, nextPositions, nextCandles, nextModels, nextBacktests, nextRisk, nextSignals] = await Promise.all([
         request<BotStatus>("/bot/status"),
         request<Position[]>("/positions?limit=20"),
         request<Candle[]>("/candles?symbol=BTCUSDT&interval=15m&limit=32&closed_only=true"),
         request<Model[]>("/models?limit=20"),
         request<Backtest[]>("/backtests?limit=8"),
+        request<RiskSettings>("/trading/risk-settings"),
+        request<Signal[]>("/signals?limit=8"),
       ]);
       setStatus(nextStatus);
       setPositions(nextPositions);
       setCandles(nextCandles.reverse());
       setModels(nextModels);
       setBacktests(nextBacktests);
+      setRisk(nextRisk);
+      setSignals(nextSignals);
+      void request<Account>("/account/balance").then(setAccount).catch(() => setAccount(null));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível carregar o painel");
     } finally {
@@ -100,6 +117,35 @@ export default function Home() {
     await load();
   };
 
+  const runOperation = async (label: string, action: () => Promise<unknown>) => {
+    setBusy(true); setOperation("");
+    try { await action(); setOperation(`${label} concluído com sucesso.`); await load(); }
+    catch (cause) { setOperation(cause instanceof Error ? cause.message : `Falha em ${label.toLowerCase()}`); }
+    finally { setBusy(false); }
+  };
+
+  const changeMode = async (mode: string) => {
+    const warning = mode === "TESTNET_TRADING" ? "Ativar execução de ordens na Binance Testnet?" : `Alterar o bot para ${mode}?`;
+    if (!window.confirm(warning)) return;
+    await runOperation("Alteração do modo", () => request("/bot/status", { method: "PUT", body: JSON.stringify({ mode, confirmation: mode === "TESTNET_TRADING" ? "ATIVAR TESTNET" : undefined }) }));
+  };
+
+  const saveRisk = async () => {
+    if (!risk) return;
+    if (risk.auto_entry_enabled && !window.confirm("Ativar entrada automática dentro dos limites informados?")) return;
+    await runOperation("Configuração de risco", () => request("/trading/risk-settings", { method: "PUT", body: JSON.stringify({ ...risk, confirmation: risk.auto_entry_enabled ? "ATIVAR ENTRADA AUTOMATICA" : undefined }) }));
+  };
+
+  const manualBuy = async () => {
+    if (!window.confirm(`Comprar BTC usando ${money(quoteAmount)} na Testnet?`)) return;
+    await runOperation("Compra Testnet", () => request("/trading/manual-buy", { method: "POST", body: JSON.stringify({ quote_amount: quoteAmount, confirmation: "COMPRAR BTC TESTNET" }) }));
+  };
+
+  const manualSell = async () => {
+    if (!window.confirm("Vender a posição BTC aberta na Testnet?")) return;
+    await runOperation("Venda Testnet", () => request("/trading/manual-sell", { method: "POST", body: JSON.stringify({ confirmation: "VENDER BTC TESTNET" }) }));
+  };
+
   const lastPrice = candles.at(-1)?.close;
   const activePositions = positions.filter((item) => item.status === "OPEN");
   const realized = positions.reduce((total, item) => total + Number(item.realized_pnl ?? 0), 0);
@@ -120,7 +166,7 @@ export default function Home() {
       <aside className="sidebar">
         <div className="brand"><span className="brand-mark">TB</span><div><strong>TradeBrain</strong><small>Quantitative desk</small></div></div>
         <nav aria-label="Navegação principal">
-          <a className="active" href="#overview">Visão geral</a><a href="#market">Mercado</a><a href="#positions">Posições</a><a href="#research">Pesquisa & IA</a>
+          <a className="active" href="#overview">Visão geral</a><a href="#market">Mercado</a><a href="#operations">Operação</a><a href="#positions">Posições</a><a href="#research">Pesquisa & IA</a>
         </nav>
         <div className="sidebar-foot"><span className={`pulse ${error ? "danger" : ""}`} />{error ? "API desconectada" : "Binance Testnet"}</div>
       </aside>
@@ -132,6 +178,7 @@ export default function Home() {
         </header>
 
         {error && <div className="notice"><strong>Conecte a API local.</strong><span>{error} · endereço esperado: {API}</span></div>}
+        {operation && <div className="operation-notice" role="status">{operation}</div>}
 
         <section className="daily-summary" id="daily" aria-label="Resumo operacional do dia">
           <div><p className="eyebrow">Resumo de hoje</p><strong>{status?.mode === "TESTNET_TRADING" ? "Operação Testnet ativa" : status?.mode === "MONITOR" ? "Mercado em monitoramento" : "Bot sem novas entradas"}</strong></div>
@@ -141,6 +188,21 @@ export default function Home() {
             <div><dt>Modelo</dt><dd>{activeModel?.algorithm.replaceAll("_", " ") ?? "—"}</dd></div>
           </dl>
           <button className="summary-refresh" onClick={() => void load()} disabled={busy} aria-label="Atualizar dados do painel">{busy ? "Atualizando…" : "Atualizar agora"}</button>
+        </section>
+
+        <section className="operations-grid" id="operations">
+          <article className="panel control-panel"><div className="panel-title"><div><p className="eyebrow">Controle seguro</p><h3>Operação Testnet</h3></div><span>Confirmação obrigatória</span></div>
+            <div className="mode-control"><span>Modo atual: <b>{status?.mode ?? "—"}</b></span><div><button onClick={() => void changeMode("OFF")} disabled={busy || status?.mode === "OFF"}>OFF</button><button onClick={() => void changeMode("MONITOR")} disabled={busy || status?.mode === "MONITOR"}>Monitor</button><button className="trade-mode" onClick={() => void changeMode("TESTNET_TRADING")} disabled={busy || status?.mode === "TESTNET_TRADING"}>Testnet trading</button></div></div>
+            <div className="manual-trade"><label>Valor da compra (USDT)<input type="number" min="10" max="20" step="1" value={quoteAmount} onChange={(event) => setQuoteAmount(Math.min(20, Math.max(10, Number(event.target.value))))} /></label><button className="buy" onClick={() => void manualBuy()} disabled={busy || status?.mode !== "TESTNET_TRADING"}>Comprar BTC</button><button className="sell" onClick={() => void manualSell()} disabled={busy || status?.mode !== "TESTNET_TRADING" || !activePositions.length}>Vender posição</button></div>
+            <p className="safety-copy">Ordens limitadas a US$ 10–20 e exclusivamente na Binance Spot Testnet.</p>
+          </article>
+
+          <article className="panel risk-panel"><div className="panel-title"><div><p className="eyebrow">Guardrails</p><h3>Limites de risco</h3></div><span>{risk?.auto_entry_enabled ? "Entrada automática ativa" : "Entrada automática bloqueada"}</span></div>{risk && <div className="risk-form"><label>Máximo por trade<input type="number" min="10" max="20" value={risk.max_quote_amount_per_trade} onChange={(event) => setRisk({ ...risk, max_quote_amount_per_trade: Number(event.target.value) })} /></label><label>Perda diária máxima<input type="number" min="1" max="500" value={risk.max_daily_loss} onChange={(event) => setRisk({ ...risk, max_daily_loss: Number(event.target.value) })} /></label><label>Cooldown (minutos)<input type="number" min="1" max="1440" value={risk.cooldown_minutes} onChange={(event) => setRisk({ ...risk, cooldown_minutes: Number(event.target.value) })} /></label><label className="check"><input type="checkbox" checked={risk.auto_entry_enabled} onChange={(event) => setRisk({ ...risk, auto_entry_enabled: event.target.checked })} />Permitir entrada automática</label><button onClick={() => void saveRisk()} disabled={busy}>Salvar limites</button></div>}</article>
+        </section>
+
+        <section className="content-grid account-signals">
+          <article className="panel"><div className="panel-title"><div><p className="eyebrow">Custódia Testnet</p><h3>Saldos disponíveis</h3></div><span>{account?.environment ?? "indisponível"}</span></div><div className="balance-grid">{account?.balances.length ? account.balances.map((balance) => <div key={balance.asset}><strong>{balance.asset}</strong><span>{Number(balance.free).toLocaleString("pt-BR", { maximumFractionDigits: 8 })}</span><small>{Number(balance.locked) ? `${balance.locked} bloqueado` : "Livre"}</small></div>) : <p className="empty-inline">Saldo Testnet indisponível.</p>}</div></article>
+          <article className="panel"><div className="panel-title"><div><p className="eyebrow">Estratégias</p><h3>Sinais recentes</h3></div><span>{signals.length} sinais</span></div><div className="signal-list">{signals.length ? signals.slice(0, 5).map((signal) => <div key={signal.id}><span className={`signal-type ${signal.signal_type.toLowerCase()}`}>{signal.signal_type}</span><p><b>{signal.symbol}</b><small>{signal.strategy_name} · {signal.confidence == null ? "sem confiança" : `${signal.confidence}%`}</small></p></div>) : <p className="empty-inline">Nenhum sinal recente.</p>}</div></article>
         </section>
 
         <section className="hero-grid" id="overview">

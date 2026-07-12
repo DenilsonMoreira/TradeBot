@@ -121,7 +121,15 @@ Fase 15 concluída
 
 ## Fase 16
 
-SaaS
+Web operacional
+
+✔ Controle autenticado do modo do bot
+
+✔ Configuração dos limites de risco
+
+✔ Saldo Testnet, sinais e ações manuais protegidas
+
+Pendente: auditoria operacional, notificações e implantação HTTPS
 
 
 # O que muda no nosso desenvolvimento?
