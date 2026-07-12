@@ -14,6 +14,7 @@ type Balance = { asset: string; free: string; locked: string };
 type Account = { environment: string; balances: Balance[] };
 type RiskSettings = { auto_entry_enabled: boolean; max_quote_amount_per_trade: number; max_daily_loss: number; max_open_positions: number; cooldown_minutes: number; updated_at: string };
 type Signal = { id: string; symbol: string; signal_type: string; confidence: number | null; strategy_name: string; created_at: string };
+type AuditEvent = { id: number; actor: string; action: string; resource: string; resource_id: string | null; details: Record<string, unknown>; created_at: string };
 
 let csrfToken = "";
 
@@ -52,12 +53,13 @@ export default function Home() {
   const [signals, setSignals] = useState<Signal[]>([]);
   const [quoteAmount, setQuoteAmount] = useState(20);
   const [operation, setOperation] = useState("");
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
 
   const load = useCallback(async () => {
     setBusy(true);
     setError("");
     try {
-      const [nextStatus, nextPositions, nextCandles, nextModels, nextBacktests, nextRisk, nextSignals] = await Promise.all([
+      const [nextStatus, nextPositions, nextCandles, nextModels, nextBacktests, nextRisk, nextSignals, nextAuditEvents] = await Promise.all([
         request<BotStatus>("/bot/status"),
         request<Position[]>("/positions?limit=20"),
         request<Candle[]>("/candles?symbol=BTCUSDT&interval=15m&limit=32&closed_only=true"),
@@ -65,6 +67,7 @@ export default function Home() {
         request<Backtest[]>("/backtests?limit=8"),
         request<RiskSettings>("/trading/risk-settings"),
         request<Signal[]>("/signals?limit=8"),
+        request<AuditEvent[]>("/audit-events?limit=12"),
       ]);
       setStatus(nextStatus);
       setPositions(nextPositions);
@@ -73,6 +76,7 @@ export default function Home() {
       setBacktests(nextBacktests);
       setRisk(nextRisk);
       setSignals(nextSignals);
+      setAuditEvents(nextAuditEvents);
       void request<Account>("/account/balance").then(setAccount).catch(() => setAccount(null));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível carregar o painel");
@@ -166,7 +170,7 @@ export default function Home() {
       <aside className="sidebar">
         <div className="brand"><span className="brand-mark">TB</span><div><strong>TradeBrain</strong><small>Quantitative desk</small></div></div>
         <nav aria-label="Navegação principal">
-          <a className="active" href="#overview">Visão geral</a><a href="#market">Mercado</a><a href="#operations">Operação</a><a href="#positions">Posições</a><a href="#research">Pesquisa & IA</a>
+          <a className="active" href="#overview">Visão geral</a><a href="#market">Mercado</a><a href="#operations">Operação</a><a href="#positions">Posições</a><a href="#audit">Auditoria</a><a href="#research">Pesquisa & IA</a>
         </nav>
         <div className="sidebar-foot"><span className={`pulse ${error ? "danger" : ""}`} />{error ? "API desconectada" : "Binance Testnet"}</div>
       </aside>
@@ -204,6 +208,8 @@ export default function Home() {
           <article className="panel"><div className="panel-title"><div><p className="eyebrow">Custódia Testnet</p><h3>Saldos disponíveis</h3></div><span>{account?.environment ?? "indisponível"}</span></div><div className="balance-grid">{account?.balances.length ? account.balances.map((balance) => <div key={balance.asset}><strong>{balance.asset}</strong><span>{Number(balance.free).toLocaleString("pt-BR", { maximumFractionDigits: 8 })}</span><small>{Number(balance.locked) ? `${balance.locked} bloqueado` : "Livre"}</small></div>) : <p className="empty-inline">Saldo Testnet indisponível.</p>}</div></article>
           <article className="panel"><div className="panel-title"><div><p className="eyebrow">Estratégias</p><h3>Sinais recentes</h3></div><span>{signals.length} sinais</span></div><div className="signal-list">{signals.length ? signals.slice(0, 5).map((signal) => <div key={signal.id}><span className={`signal-type ${signal.signal_type.toLowerCase()}`}>{signal.signal_type}</span><p><b>{signal.symbol}</b><small>{signal.strategy_name} · {signal.confidence == null ? "sem confiança" : `${signal.confidence}%`}</small></p></div>) : <p className="empty-inline">Nenhum sinal recente.</p>}</div></article>
         </section>
+
+        <section className="panel audit-panel" id="audit"><div className="panel-title"><div><p className="eyebrow">Rastreabilidade</p><h3>Auditoria operacional</h3></div><span>{auditEvents.length} eventos recentes</span></div><div className="audit-list">{auditEvents.length ? auditEvents.map((event) => <div className="audit-row" key={event.id}><span className="audit-dot" /><div><strong>{event.action.replaceAll("_", " ")}</strong><small>{event.actor} · {event.resource}{event.resource_id ? ` #${event.resource_id}` : ""}</small></div><time dateTime={event.created_at}>{new Date(event.created_at).toLocaleString("pt-BR")}</time></div>) : <p className="empty-inline">As próximas ações operacionais aparecerão aqui.</p>}</div></section>
 
         <section className="hero-grid" id="overview">
           <article className="market-card" id="market">

@@ -19,6 +19,8 @@ from app.services.ensemble_service import EnsembleService
 from app.services.prediction_service import PredictionService
 from app.api.routes.auth import COOKIE_NAME, auth_is_configured
 from app.core.security import OperatorSession, read_session
+from app.repositories.audit_repository import AuditRepository
+from app.services.audit_service import AuditService
 
 
 def get_candle_service(db: Session = Depends(get_db)) -> CandleService:
@@ -59,6 +61,10 @@ def get_ensemble_service(db: Session = Depends(get_db)) -> EnsembleService:
 
 def get_prediction_service(db: Session = Depends(get_db)) -> PredictionService:
     return PredictionService(ResearchRepository(db))
+
+
+def get_audit_service(db: Session = Depends(get_db)) -> AuditService:
+    return AuditService(AuditRepository(db))
 
 
 def get_operator_session(request: Request) -> OperatorSession:

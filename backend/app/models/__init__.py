@@ -7,3 +7,4 @@ from .indicator import Indicator
 from .risk import TradingRiskSettings
 from .research import BacktestRun, DatasetArtifact, TrainedModel
 from .prediction import Prediction
+from .audit import AuditEvent

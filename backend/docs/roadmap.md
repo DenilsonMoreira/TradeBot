@@ -129,7 +129,9 @@ Web operacional
 
 ✔ Saldo Testnet, sinais e ações manuais protegidas
 
-Pendente: auditoria operacional, notificações e implantação HTTPS
+✔ Auditoria operacional persistente e autenticada
+
+Pendente: notificações e implantação HTTPS
 
 
 # O que muda no nosso desenvolvimento?

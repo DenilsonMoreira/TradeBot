@@ -33,7 +33,10 @@ from app.api.routes.candles import router as candles_router
 from app.api.routes.indicators import router as indicators_router
 from app.api.routes.research import router as research_router
 from app.api.routes.auth import router as auth_router
-from app.api.dependencies import get_operator_session, require_operator_csrf
+from app.api.dependencies import get_audit_service, get_operator_session, require_operator_csrf
+from app.api.routes.audit import router as audit_router
+from app.core.security import OperatorSession
+from app.services.audit_service import AuditService
 
 
 @asynccontextmanager
@@ -86,6 +89,7 @@ app.include_router(candles_router)
 app.include_router(indicators_router)
 app.include_router(research_router)
 app.include_router(auth_router)
+app.include_router(audit_router)
 
 binance = BinanceTestnetClient()
 
@@ -162,7 +166,8 @@ def get_bot_status(db: Session = Depends(get_db)):
 def update_bot_status(
     payload: BotModeUpdate,
     db: Session = Depends(get_db),
-    _session=Depends(require_operator_csrf),
+    session: OperatorSession = Depends(require_operator_csrf),
+    audit: AuditService = Depends(get_audit_service),
 ):
     if (
         payload.mode == BotMode.TESTNET_TRADING
@@ -184,13 +189,14 @@ def update_bot_status(
     else:
         status.mode = payload.mode
 
-    db.commit()
+    db.flush()
+    audit.record(session.email, "BOT_MODE_CHANGED", "bot", resource_id="1", details={"mode": payload.mode.value})
     db.refresh(status)
     return status
 
 
 @app.post("/bot/emergency-stop", response_model=BotStatusResponse)
-def emergency_stop(db: Session = Depends(get_db), _session=Depends(require_operator_csrf)):
+def emergency_stop(db: Session = Depends(get_db), session: OperatorSession = Depends(require_operator_csrf), audit: AuditService = Depends(get_audit_service)):
     status = db.get(BotStatus, 1)
 
     if status is None:
@@ -199,7 +205,8 @@ def emergency_stop(db: Session = Depends(get_db), _session=Depends(require_opera
     else:
         status.mode = BotMode.OFF
 
-    db.commit()
+    db.flush()
+    audit.record(session.email, "EMERGENCY_STOP", "bot", resource_id="1", details={"mode": "OFF"})
     db.refresh(status)
     return status
 
@@ -252,7 +259,8 @@ def list_signals(
 async def manual_buy(
     payload: ManualBuyRequest,
     db: Session = Depends(get_db),
-    _session=Depends(require_operator_csrf),
+    session: OperatorSession = Depends(require_operator_csrf),
+    audit: AuditService = Depends(get_audit_service),
 ):
     status = db.get(BotStatus, 1)
 
@@ -272,11 +280,13 @@ async def manual_buy(
         )
 
     try:
-        return await execute_market_buy(
+        order = await execute_market_buy(
             db=db,
             client=binance,
             quote_amount=payload.quote_amount,
         )
+        audit.record(session.email, "MANUAL_BUY", "order", resource_id=str(order.id), details={"symbol": order.symbol, "quote_amount": payload.quote_amount, "environment": "testnet"})
+        return order
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
     except Exception as error:
@@ -294,7 +304,8 @@ async def manual_buy(
 async def manual_sell(
     payload: ManualSellRequest,
     db: Session = Depends(get_db),
-    _session=Depends(require_operator_csrf),
+    session: OperatorSession = Depends(require_operator_csrf),
+    audit: AuditService = Depends(get_audit_service),
 ):
     status = db.get(BotStatus, 1)
 
@@ -314,11 +325,13 @@ async def manual_sell(
         )
 
     try:
-        return await execute_market_sell(
+        order = await execute_market_sell(
             db=db,
             client=binance,
             close_reason="MANUAL",
         )
+        audit.record(session.email, "MANUAL_SELL", "order", resource_id=str(order.id), details={"symbol": order.symbol, "environment": "testnet"})
+        return order
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
     except Exception as error:
@@ -380,7 +393,8 @@ def get_risk_settings(db: Session = Depends(get_db)):
 def update_risk_settings(
     payload: TradingRiskSettingsUpdate,
     db: Session = Depends(get_db),
-    _session=Depends(require_operator_csrf),
+    session: OperatorSession = Depends(require_operator_csrf),
+    audit: AuditService = Depends(get_audit_service),
 ):
     if (
         payload.auto_entry_enabled
@@ -408,6 +422,7 @@ def update_risk_settings(
     risk_settings.max_open_positions = payload.max_open_positions
     risk_settings.cooldown_minutes = payload.cooldown_minutes
 
-    db.commit()
+    db.flush()
+    audit.record(session.email, "RISK_SETTINGS_CHANGED", "risk_settings", resource_id="1", details={"auto_entry_enabled": payload.auto_entry_enabled, "max_quote_amount_per_trade": payload.max_quote_amount_per_trade, "max_daily_loss": payload.max_daily_loss, "max_open_positions": payload.max_open_positions, "cooldown_minutes": payload.cooldown_minutes})
     db.refresh(risk_settings)
     return risk_settings
