@@ -111,7 +111,13 @@ Aplicativo
 
 ✔ Proteção CSRF em sincronização, cálculo, treinamento e ciclo de modelos
 
-Pendente: aplicativo nativo
+✔ Aplicativo nativo Expo/React Native para Android e iOS
+
+✔ Sessão móvel curta armazenada no SecureStore
+
+✔ Status, posições, modelo ativo e parada de emergência no app
+
+Fase 15 concluída
 
 ## Fase 16
 

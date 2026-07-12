@@ -11,3 +11,7 @@ class SessionResponse(BaseModel):
     authenticated: bool = True
     email: EmailStr
     csrf_token: str
+
+
+class NativeSessionResponse(SessionResponse):
+    session_token: str

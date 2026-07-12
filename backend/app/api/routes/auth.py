@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from app.config import settings
 from app.core.security import create_session, verify_password, verify_totp
-from app.schemas.auth import LoginRequest, SessionResponse
+from app.schemas.auth import LoginRequest, NativeSessionResponse, SessionResponse
 
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -15,8 +15,7 @@ def auth_is_configured() -> bool:
     return all((settings.auth_secret_key, settings.auth_operator_email, settings.auth_password_hash, settings.auth_totp_secret))
 
 
-@router.post("/login", response_model=SessionResponse)
-def login(payload: LoginRequest, response: Response) -> SessionResponse:
+def authenticate(payload: LoginRequest):
     if not auth_is_configured():
         raise HTTPException(status_code=503, detail="Autenticação do operador não configurada.")
     email_ok = hmac.compare_digest(payload.email.lower(), settings.auth_operator_email.lower())
@@ -24,12 +23,27 @@ def login(payload: LoginRequest, response: Response) -> SessionResponse:
     totp_ok = verify_totp(settings.auth_totp_secret, payload.totp_code)
     if not (email_ok and password_ok and totp_ok):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciais inválidas.")
-    token, session = create_session(payload.email.lower(), settings.auth_secret_key, settings.auth_session_minutes)
+    return create_session(payload.email.lower(), settings.auth_secret_key, settings.auth_session_minutes)
+
+
+@router.post("/login", response_model=SessionResponse)
+def login(payload: LoginRequest, response: Response) -> SessionResponse:
+    token, session = authenticate(payload)
     response.set_cookie(
         COOKIE_NAME, token, max_age=settings.auth_session_minutes * 60,
         httponly=True, secure=settings.auth_cookie_secure, samesite="strict", path="/",
     )
     return SessionResponse(email=session.email, csrf_token=session.csrf_token)
+
+
+@router.post("/mobile-login", response_model=NativeSessionResponse)
+def mobile_login(payload: LoginRequest) -> NativeSessionResponse:
+    token, session = authenticate(payload)
+    return NativeSessionResponse(
+        email=session.email,
+        csrf_token=session.csrf_token,
+        session_token=token,
+    )
 
 
 @router.post("/logout", status_code=204)

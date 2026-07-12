@@ -87,3 +87,24 @@ def test_login_rejects_invalid_credentials(monkeypatch) -> None:
             "totp_code": "123456",
         })
     assert response.status_code == 401
+
+
+def test_mobile_login_returns_bearer_session(monkeypatch) -> None:
+    secret = "JBSWY3DPEHPK3PXP"
+    monkeypatch.setattr(settings, "auth_secret_key", "session-secret")
+    monkeypatch.setattr(settings, "auth_operator_email", "operator@example.com")
+    monkeypatch.setattr(settings, "auth_password_hash", hash_password("uma-senha-realmente-forte"))
+    monkeypatch.setattr(settings, "auth_totp_secret", secret)
+    test_app = FastAPI()
+    test_app.include_router(router)
+    with TestClient(test_app) as client:
+        login = client.post("/auth/mobile-login", json={
+            "email": "operator@example.com",
+            "password": "uma-senha-realmente-forte",
+            "totp_code": _current_totp(secret),
+        })
+        token = login.json()["session_token"]
+        session = client.get("/auth/session", headers={"Authorization": f"Bearer {token}"})
+    assert login.status_code == 200
+    assert "tradebrain_session" not in login.cookies
+    assert session.status_code == 200

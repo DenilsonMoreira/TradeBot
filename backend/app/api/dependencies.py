@@ -64,7 +64,10 @@ def get_prediction_service(db: Session = Depends(get_db)) -> PredictionService:
 def get_operator_session(request: Request) -> OperatorSession:
     if not auth_is_configured():
         raise HTTPException(status_code=503, detail="Autenticação do operador não configurada.")
-    session = read_session(request.cookies.get(COOKIE_NAME, ""), settings.auth_secret_key)
+    authorization = request.headers.get("Authorization", "")
+    bearer = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
+    token = bearer or request.cookies.get(COOKIE_NAME, "")
+    session = read_session(token, settings.auth_secret_key)
     if session is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sessão ausente ou expirada.")
     return session

@@ -50,6 +50,23 @@ Serviços iniciados:
 - `indicator-worker`: cálculo idempotente dos indicadores;
 - `db`: PostgreSQL 16.
 
+## Aplicativo nativo
+
+O diretório `mobile` contém o aplicativo Expo/React Native para Android e iOS.
+Copie `mobile/.env.example` para `mobile/.env` e ajuste `EXPO_PUBLIC_API_URL`.
+No emulador Android, `10.0.2.2` aponta para o computador; em um aparelho físico,
+use o IP local do computador e mantenha ambos na mesma rede.
+
+```bash
+cd mobile
+npm install
+npm start
+```
+
+O app usa a mesma senha e TOTP do painel, guarda a sessão curta no SecureStore
+do dispositivo e envia o token CSRF nas ações críticas. Nenhuma chave da Binance
+é armazenada no aplicativo.
+
 ## API de candles
 
 ```text
