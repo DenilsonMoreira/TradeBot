@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     auth_totp_secret: str = ""
     auth_session_minutes: int = 30
     auth_cookie_secure: bool = False
+    auth_max_attempts: int = 5
+    auth_attempt_window_seconds: int = 900
+    auth_lockout_seconds: int = 900
 
     model_config = SettingsConfigDict(
         env_file=".env",

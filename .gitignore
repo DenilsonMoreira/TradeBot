@@ -7,3 +7,4 @@ __pycache__/
 .pytest_cache/
 postgres_data/
 backend/scripts/tradebrain-authenticator.png
+backups/

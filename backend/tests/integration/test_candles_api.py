@@ -53,6 +53,15 @@ def test_candle_read_endpoints() -> None:
     assert latest.json()["symbol"] == "BTCUSDT"
 
 
+def test_market_config_exposes_configured_symbols() -> None:
+    with TestClient(app) as client:
+        response = client.get("/candles/config")
+
+    assert response.status_code == 200
+    assert "BTCUSDT" in response.json()["symbols"]
+    assert response.json()["dashboard_refresh_seconds"] == 15
+
+
 def test_sync_endpoint_uses_service() -> None:
     service = AsyncMock()
     service.sync_incremental.return_value = []

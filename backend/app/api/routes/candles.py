@@ -5,11 +5,24 @@ from app.schemas.candle import (
     CandleResponse,
     CandleSyncRequest,
     CandleSyncResponse,
+    MarketConfigResponse,
 )
 from app.services.candle_service import CandleService
+from app.config import settings
 
 
 router = APIRouter(prefix="/candles", tags=["candles"])
+
+
+@router.get("/config", response_model=MarketConfigResponse, dependencies=[Depends(get_operator_session)])
+def get_market_config() -> MarketConfigResponse:
+    symbols = list(dict.fromkeys(symbol.strip().upper() for symbol in settings.candle_symbols.split(",") if symbol.strip()))
+    intervals = list(dict.fromkeys(interval.strip() for interval in settings.candle_intervals.split(",") if interval.strip()))
+    return MarketConfigResponse(
+        symbols=symbols,
+        intervals=intervals,
+        dashboard_refresh_seconds=15,
+    )
 
 
 @router.get("", response_model=list[CandleResponse], dependencies=[Depends(get_operator_session)])

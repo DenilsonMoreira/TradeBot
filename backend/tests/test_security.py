@@ -7,8 +7,9 @@ from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.dependencies import require_operator_csrf
-from app.api.routes.auth import router
+from app.api.routes.auth import login_rate_limiter, router
 from app.config import settings
+from app.core.rate_limit import LoginRateLimiter
 from app.core.security import create_session, hash_password, read_session, verify_password, verify_totp
 
 
@@ -74,6 +75,7 @@ def test_login_cookie_session_and_csrf(monkeypatch) -> None:
 
 
 def test_login_rejects_invalid_credentials(monkeypatch) -> None:
+    login_rate_limiter.reset()
     monkeypatch.setattr(settings, "auth_secret_key", "session-secret")
     monkeypatch.setattr(settings, "auth_operator_email", "operator@example.com")
     monkeypatch.setattr(settings, "auth_password_hash", hash_password("uma-senha-realmente-forte"))
@@ -87,6 +89,41 @@ def test_login_rejects_invalid_credentials(monkeypatch) -> None:
             "totp_code": "123456",
         })
     assert response.status_code == 401
+
+
+def test_login_blocks_repeated_invalid_credentials(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "auth_secret_key", "session-secret")
+    monkeypatch.setattr(settings, "auth_operator_email", "operator@example.com")
+    monkeypatch.setattr(settings, "auth_password_hash", hash_password("uma-senha-realmente-forte"))
+    monkeypatch.setattr(settings, "auth_totp_secret", "JBSWY3DPEHPK3PXP")
+    login_rate_limiter.reset()
+    test_app = FastAPI()
+    test_app.include_router(router)
+    payload = {
+        "email": "operator@example.com",
+        "password": "senha-incorreta-123",
+        "totp_code": "123456",
+    }
+
+    with TestClient(test_app) as client:
+        responses = [client.post("/auth/login", json=payload) for _ in range(settings.auth_max_attempts)]
+        blocked = client.post("/auth/login", json=payload)
+
+    assert [response.status_code for response in responses[:-1]] == [401] * (settings.auth_max_attempts - 1)
+    assert responses[-1].status_code == 429
+    assert blocked.status_code == 429
+    assert int(blocked.headers["Retry-After"]) > 0
+    login_rate_limiter.reset()
+
+
+def test_rate_limiter_expires_lockout() -> None:
+    now = [100.0]
+    limiter = LoginRateLimiter(2, 60, 30, clock=lambda: now[0])
+    assert limiter.register_failure("opaque") == 0
+    assert limiter.register_failure("opaque") == 30
+    assert limiter.retry_after("opaque") == 30
+    now[0] += 31
+    assert limiter.retry_after("opaque") == 0
 
 
 def test_mobile_login_returns_bearer_session(monkeypatch) -> None:

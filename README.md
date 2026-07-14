@@ -85,6 +85,33 @@ Copy-Item .env.production.example .env.production
 Em produção, `AUTH_COOKIE_SECURE=true` é obrigatório. Não exponha diretamente
 as portas 3000, 5432 ou 8000 e mantenha o ambiente Binance em Testnet.
 
+O login bloqueia temporariamente a combinação de IP e e-mail após cinco
+tentativas inválidas. Os limites podem ser ajustados pelas variáveis
+`AUTH_MAX_ATTEMPTS`, `AUTH_ATTEMPT_WINDOW_SECONDS` e `AUTH_LOCKOUT_SECONDS`.
+
+Crie backups periódicos do PostgreSQL e copie os arquivos para armazenamento
+externo ao servidor:
+
+```powershell
+.\deploy\backup-database.ps1
+```
+
+A restauração apaga e recria os objetos existentes no banco e exige uma
+confirmação explícita:
+
+```powershell
+.\deploy\restore-database.ps1 -BackupFile .\backups\tradebrain-AAAAMMDD-HHMMSS.dump -Confirmation "RESTAURAR-BANCO"
+```
+
+Após publicar, valide serviços, HTTPS, API e conexão com o banco:
+
+```powershell
+.\deploy\check-production.ps1
+```
+
+Os logs dos contêineres de produção usam rotação automática, limitados a cinco
+arquivos de 10 MB por serviço.
+
 ## API de candles
 
 ```text
@@ -142,11 +169,16 @@ deve passar pelo gestor de risco e pelo serviço de execução.
 
 ## Testes
 
-```bash
-docker compose up -d db
-docker compose run --rm api alembic upgrade head
-docker compose run --rm -e PYTHONPATH=/app -v ./backend/tests:/app/tests api pytest -q
+Execute a suíte completa em um PostgreSQL temporário e isolado. O banco local da
+aplicação não é alterado:
+
+```powershell
+.\deploy\test-docker.ps1
 ```
+
+Para depuração, `-KeepContainers` preserva os contêineres de teste após a
+execução. Não execute a suíte pelo serviço `api` do Compose principal: os testes
+de integração recriam dados e devem usar exclusivamente o banco temporário.
 
 ## Controle do bot
 

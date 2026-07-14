@@ -168,7 +168,7 @@ class TradingRiskSettings(Base):
     )
     max_quote_amount_per_trade: Mapped[float] = mapped_column(
         Float,
-        default=20.0,
+        default=5.0,
         nullable=False,
     )
     max_daily_loss: Mapped[float] = mapped_column(

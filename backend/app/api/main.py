@@ -58,7 +58,7 @@ async def lifespan(_: FastAPI):
                 TradingRiskSettings(
                     id=1,
                     auto_entry_enabled=False,
-                    max_quote_amount_per_trade=20.0,
+                    max_quote_amount_per_trade=5.0,
                     max_daily_loss=40.0,
                     max_open_positions=1,
                     cooldown_minutes=30,
@@ -103,6 +103,16 @@ RELEVANT_ASSETS = {"USDT", "BTC", "ETH", "BNB", "SOL", "XRP"}
 async def health():
     return {
         "status": "ok",
+        "environment": "testnet" if settings.binance_testnet else "live",
+    }
+
+
+@app.get("/health/ready")
+def readiness(db: Session = Depends(get_db)):
+    db.execute(select(1))
+    return {
+        "status": "ready",
+        "database": "ok",
         "environment": "testnet" if settings.binance_testnet else "live",
     }
 

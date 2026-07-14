@@ -139,6 +139,20 @@ Web operacional
 
 ✔ Cookies seguros, headers defensivos e serviços internos não expostos
 
+✔ Bloqueio temporário de login e feedback de espera no painel
+
+✔ Healthcheck com PostgreSQL, backup, restauração e rotação de logs
+
+✔ Diagnóstico automatizado pós-publicação
+
+✔ Suíte Docker isolada do banco operacional local
+
+✔ Navegação ativa, modais operacionais e feedback de validação
+
+✔ Histórico de compras/vendas e explicações de sinais e carteira Testnet
+
+✔ Mercado multiativo com candles OHLC e atualização automática visível
+
 Pendente: apontar domínio e executar a publicação no servidor
 
 

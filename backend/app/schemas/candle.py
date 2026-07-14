@@ -40,3 +40,9 @@ class CandleSyncResponse(BaseModel):
     interval: str
     synchronized: int
     candles: list[CandleResponse]
+
+
+class MarketConfigResponse(BaseModel):
+    symbols: list[str]
+    intervals: list[str]
+    dashboard_refresh_seconds: int

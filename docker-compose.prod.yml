@@ -1,5 +1,12 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   proxy:
+    logging: *default-logging
     image: caddy:2.10-alpine
     container_name: tradebrain-proxy
     restart: unless-stopped
@@ -20,6 +27,7 @@ services:
         condition: service_healthy
 
   frontend:
+    logging: *default-logging
     build:
       context: ./frontend
       target: production
@@ -37,6 +45,7 @@ services:
       start_period: 20s
 
   api:
+    logging: *default-logging
     build:
       context: ./backend
     container_name: tradebot-api
@@ -54,13 +63,14 @@ services:
         condition: service_healthy
     command: sh -c "alembic upgrade head && uvicorn app.api.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=172.16.0.0/12"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready')"]
       interval: 15s
       timeout: 5s
       retries: 10
       start_period: 20s
 
   worker:
+    logging: *default-logging
     build:
       context: ./backend
     container_name: tradebot-worker
@@ -75,6 +85,7 @@ services:
         condition: service_healthy
 
   candle-worker:
+    logging: *default-logging
     build:
       context: ./backend
     container_name: tradebot-candle-worker
@@ -91,6 +102,7 @@ services:
         condition: service_healthy
 
   indicator-worker:
+    logging: *default-logging
     build:
       context: ./backend
     container_name: tradebot-indicator-worker
@@ -107,6 +119,7 @@ services:
         condition: service_started
 
   db:
+    logging: *default-logging
     image: postgres:16-alpine
     container_name: tradebot-db
     restart: unless-stopped

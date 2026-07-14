@@ -1,23 +1,36 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Swal from "sweetalert2";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 type BotStatus = { mode: string; updated_at: string };
 type Position = { id: string; symbol: string; status: string; quantity: number; entry_price: number; realized_pnl: number | null };
-type Candle = { id: number; symbol: string; interval: string; close: string; open_time: string; is_closed: boolean };
+type Candle = { id: number; symbol: string; interval: string; open: string; high: string; low: string; close: string; volume: string; trades: number; open_time: string; close_time: string; is_closed: boolean };
+type MarketConfig = { symbols: string[]; intervals: string[]; dashboard_refresh_seconds: number };
 type Model = { id: number; algorithm: string; status: string; metrics: Record<string, number | string | null> };
 type Backtest = { id: number; strategy: string; symbol: string; final_capital: string; metrics: Record<string, number | string | null> };
 type AuthSession = { authenticated: boolean; email: string; csrf_token: string };
 type Balance = { asset: string; free: string; locked: string };
 type Account = { environment: string; balances: Balance[] };
 type RiskSettings = { auto_entry_enabled: boolean; max_quote_amount_per_trade: number; max_daily_loss: number; max_open_positions: number; cooldown_minutes: number; updated_at: string };
-type Signal = { id: string; symbol: string; signal_type: string; confidence: number | null; strategy_name: string; created_at: string };
+type Signal = { id: string; symbol: string; timeframe: string; signal_type: string; price: number; confidence: number | null; strategy_name: string; details: string | null; created_at: string };
+type Order = { id: string; symbol: string; side: string; order_type: string; status: string; requested_quote_amount: number; executed_quantity: number | null; executed_price: number | null; error_message: string | null; created_at: string };
 type AuditEvent = { id: number; actor: string; action: string; resource: string; resource_id: string | null; details: Record<string, unknown>; created_at: string };
 type Notification = { id: number; severity: string; category: string; title: string; message: string; resource_id: string | null; read_at: string | null; created_at: string };
 
 let csrfToken = "";
+
+class ApiError extends Error {
+  retryAfter: number;
+
+  constructor(message: string, retryAfter = 0) {
+    super(message);
+    this.name = "ApiError";
+    this.retryAfter = retryAfter;
+  }
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const method = init?.method?.toUpperCase() ?? "GET";
@@ -28,7 +41,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail ?? `API respondeu ${response.status}`);
+    const retryAfter = Number(response.headers.get("Retry-After") ?? 0);
+    const detail = body.detail;
+    const message = Array.isArray(detail)
+      ? detail.map((item) => item?.msg ?? "Valor inválido").join(" · ")
+      : typeof detail === "string" ? detail : `API respondeu ${response.status}`;
+    throw new ApiError(message, Number.isFinite(retryAfter) ? retryAfter : 0);
   }
   return response.status === 204 ? undefined as T : response.json();
 }
@@ -41,7 +59,13 @@ function money(value: number | string | null | undefined) {
 export default function Home() {
   const [status, setStatus] = useState<BotStatus | null>(null);
   const [positions, setPositions] = useState<Position[]>([]);
-  const [candles, setCandles] = useState<Candle[]>([]);
+  const [marketConfig, setMarketConfig] = useState<MarketConfig>({ symbols: ["BTCUSDT", "ETHUSDT", "BNBUSDT"], intervals: ["15m"], dashboard_refresh_seconds: 15 });
+  const [marketCandles, setMarketCandles] = useState<Record<string, Candle[]>>({});
+  const [selectedSymbol, setSelectedSymbol] = useState("BTCUSDT");
+  const [selectedInterval, setSelectedInterval] = useState("15m");
+  const [marketUpdating, setMarketUpdating] = useState(false);
+  const [marketCheckedAt, setMarketCheckedAt] = useState<Date | null>(null);
+  const [nextMarketRefresh, setNextMarketRefresh] = useState(15);
   const [models, setModels] = useState<Model[]>([]);
   const [backtests, setBacktests] = useState<Backtest[]>([]);
   const [busy, setBusy] = useState(true);
@@ -49,36 +73,61 @@ export default function Home() {
   const [auth, setAuth] = useState<AuthSession | null>(null);
   const [authChecking, setAuthChecking] = useState(true);
   const [loginError, setLoginError] = useState("");
+  const [loginRetrySeconds, setLoginRetrySeconds] = useState(0);
   const [account, setAccount] = useState<Account | null>(null);
   const [risk, setRisk] = useState<RiskSettings | null>(null);
   const [signals, setSignals] = useState<Signal[]>([]);
-  const [quoteAmount, setQuoteAmount] = useState(20);
-  const [operation, setOperation] = useState("");
+  const [quoteAmount, setQuoteAmount] = useState(5);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [activeSection, setActiveSection] = useState("overview");
+
+  const loadMarket = useCallback(async (symbols: string[], interval: string) => {
+    if (!symbols.length) return;
+    setMarketUpdating(true);
+    try {
+      const results = await Promise.all(symbols.map(async (symbol) => ({
+        symbol,
+        candles: (await request<Candle[]>(`/candles?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&limit=40&closed_only=false`)).reverse(),
+      })));
+      setMarketCandles(Object.fromEntries(results.map((result) => [result.symbol, result.candles])));
+      setMarketCheckedAt(new Date());
+      setNextMarketRefresh(marketConfig.dashboard_refresh_seconds);
+      setError("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível atualizar os mercados");
+    } finally {
+      setMarketUpdating(false);
+    }
+  }, [marketConfig.dashboard_refresh_seconds]);
 
   const load = useCallback(async () => {
     setBusy(true);
     setError("");
     try {
-      const [nextStatus, nextPositions, nextCandles, nextModels, nextBacktests, nextRisk, nextSignals, nextAuditEvents, nextNotifications] = await Promise.all([
+      const [nextStatus, nextPositions, nextMarketConfig, nextModels, nextBacktests, nextRisk, nextSignals, nextOrders, nextAuditEvents, nextNotifications] = await Promise.all([
         request<BotStatus>("/bot/status"),
         request<Position[]>("/positions?limit=20"),
-        request<Candle[]>("/candles?symbol=BTCUSDT&interval=15m&limit=32&closed_only=true"),
+        request<MarketConfig>("/candles/config"),
         request<Model[]>("/models?limit=20"),
         request<Backtest[]>("/backtests?limit=8"),
         request<RiskSettings>("/trading/risk-settings"),
         request<Signal[]>("/signals?limit=8"),
+        request<Order[]>("/orders?limit=20"),
         request<AuditEvent[]>("/audit-events?limit=12"),
         request<Notification[]>("/notifications?limit=12"),
       ]);
       setStatus(nextStatus);
       setPositions(nextPositions);
-      setCandles(nextCandles.reverse());
+      setMarketConfig(nextMarketConfig);
+      setSelectedSymbol((current) => nextMarketConfig.symbols.includes(current) ? current : nextMarketConfig.symbols[0] ?? "BTCUSDT");
+      setSelectedInterval((current) => nextMarketConfig.intervals.includes(current) ? current : nextMarketConfig.intervals[0] ?? "15m");
       setModels(nextModels);
       setBacktests(nextBacktests);
       setRisk(nextRisk);
       setSignals(nextSignals);
+      setOrders(nextOrders);
       setAuditEvents(nextAuditEvents);
       setNotifications(nextNotifications);
       void request<Account>("/account/balance").then(setAccount).catch(() => setAccount(null));
@@ -96,6 +145,59 @@ export default function Home() {
       .finally(() => setAuthChecking(false));
   }, [load]);
 
+  useEffect(() => {
+    if (!auth) return;
+    const initial = window.setTimeout(() => {
+      void loadMarket(marketConfig.symbols, selectedInterval);
+    }, 0);
+    const timer = window.setInterval(() => {
+      void loadMarket(marketConfig.symbols, selectedInterval);
+    }, marketConfig.dashboard_refresh_seconds * 1000);
+    return () => { window.clearTimeout(initial); window.clearInterval(timer); };
+  }, [auth, loadMarket, marketConfig.dashboard_refresh_seconds, marketConfig.symbols, selectedInterval]);
+
+  useEffect(() => {
+    if (!auth) return;
+    const timer = window.setInterval(() => setNextMarketRefresh((seconds) => Math.max(0, seconds - 1)), 1000);
+    return () => window.clearInterval(timer);
+  }, [auth]);
+
+  useEffect(() => {
+    if (loginRetrySeconds <= 0) return;
+    const timer = window.setInterval(() => {
+      setLoginRetrySeconds((seconds) => Math.max(0, seconds - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [loginRetrySeconds]);
+
+  useEffect(() => {
+    const sectionIds = ["overview", "market", "operations", "orders", "positions", "notifications", "audit", "research"];
+    const selectHashSection = () => {
+      const section = window.location.hash.slice(1);
+      if (sectionIds.includes(section)) setActiveSection(section);
+    };
+    selectHashSection();
+    window.addEventListener("hashchange", selectHashSection);
+    return () => window.removeEventListener("hashchange", selectHashSection);
+  }, [auth]);
+
+  const confirmAction = async (title: string, text: string, confirmButtonText: string, danger = false) => {
+    const result = await Swal.fire({
+      title,
+      text,
+      icon: danger ? "warning" : "question",
+      showCancelButton: true,
+      confirmButtonText,
+      cancelButtonText: "Cancelar",
+      confirmButtonColor: danger ? "#d94f56" : "#2da982",
+      cancelButtonColor: "#344049",
+      background: "#10151b",
+      color: "#eef5f2",
+      reverseButtons: true,
+    });
+    return result.isConfirmed;
+  };
+
   const login = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setLoginError("");
@@ -109,6 +211,7 @@ export default function Home() {
       setAuth(session);
       await load();
     } catch (cause) {
+      if (cause instanceof ApiError && cause.retryAfter > 0) setLoginRetrySeconds(cause.retryAfter);
       setLoginError(cause instanceof Error ? cause.message : "Falha na autenticação");
     }
   };
@@ -120,37 +223,43 @@ export default function Home() {
   };
 
   const emergencyStop = async () => {
-    if (!window.confirm("Desligar o bot e bloquear novas entradas?")) return;
-    await request("/bot/emergency-stop", { method: "POST" });
-    await load();
+    if (!await confirmAction("Parar o bot?", "Novas entradas serão bloqueadas imediatamente.", "Parar agora", true)) return;
+    await runOperation("Parada de emergência", () => request("/bot/emergency-stop", { method: "POST" }));
   };
 
   const runOperation = async (label: string, action: () => Promise<unknown>) => {
-    setBusy(true); setOperation("");
-    try { await action(); setOperation(`${label} concluído com sucesso.`); await load(); }
-    catch (cause) { setOperation(cause instanceof Error ? cause.message : `Falha em ${label.toLowerCase()}`); }
+    setBusy(true);
+    try {
+      await action();
+      await load();
+      await Swal.fire({ title: "Concluído", text: `${label} concluída com sucesso.`, icon: "success", background: "#10151b", color: "#eef5f2", confirmButtonColor: "#2da982" });
+    }
+    catch (cause) {
+      await Swal.fire({ title: `Falha em ${label.toLowerCase()}`, text: cause instanceof Error ? cause.message : "Não foi possível concluir a operação.", icon: "error", background: "#10151b", color: "#eef5f2", confirmButtonColor: "#d94f56" });
+    }
     finally { setBusy(false); }
   };
 
   const changeMode = async (mode: string) => {
     const warning = mode === "TESTNET_TRADING" ? "Ativar execução de ordens na Binance Testnet?" : `Alterar o bot para ${mode}?`;
-    if (!window.confirm(warning)) return;
+    if (!await confirmAction("Alterar modo operacional?", warning, "Confirmar alteração", mode === "TESTNET_TRADING")) return;
     await runOperation("Alteração do modo", () => request("/bot/status", { method: "PUT", body: JSON.stringify({ mode, confirmation: mode === "TESTNET_TRADING" ? "ATIVAR TESTNET" : undefined }) }));
   };
 
   const saveRisk = async () => {
     if (!risk) return;
-    if (risk.auto_entry_enabled && !window.confirm("Ativar entrada automática dentro dos limites informados?")) return;
-    await runOperation("Configuração de risco", () => request("/trading/risk-settings", { method: "PUT", body: JSON.stringify({ ...risk, confirmation: risk.auto_entry_enabled ? "ATIVAR ENTRADA AUTOMATICA" : undefined }) }));
+    const summary = `Máximo por trade: ${money(risk.max_quote_amount_per_trade)} · perda diária: ${money(risk.max_daily_loss)} · cooldown: ${risk.cooldown_minutes} min.`;
+    if (!await confirmAction("Salvar limites de risco?", summary, "Salvar limites", risk.auto_entry_enabled)) return;
+    await runOperation("Configuração de risco", () => request("/trading/risk-settings", { method: "PUT", body: JSON.stringify({ auto_entry_enabled: risk.auto_entry_enabled, max_quote_amount_per_trade: risk.max_quote_amount_per_trade, max_daily_loss: risk.max_daily_loss, max_open_positions: risk.max_open_positions, cooldown_minutes: risk.cooldown_minutes, confirmation: risk.auto_entry_enabled ? "ATIVAR ENTRADA AUTOMATICA" : undefined }) }));
   };
 
   const manualBuy = async () => {
-    if (!window.confirm(`Comprar BTC usando ${money(quoteAmount)} na Testnet?`)) return;
+    if (!await confirmAction("Comprar BTC na Testnet?", `A ordem usará ${money(quoteAmount)} do saldo simulado.`, "Comprar BTC")) return;
     await runOperation("Compra Testnet", () => request("/trading/manual-buy", { method: "POST", body: JSON.stringify({ quote_amount: quoteAmount, confirmation: "COMPRAR BTC TESTNET" }) }));
   };
 
   const manualSell = async () => {
-    if (!window.confirm("Vender a posição BTC aberta na Testnet?")) return;
+    if (!await confirmAction("Vender posição Testnet?", "A posição BTC aberta será encerrada pelo preço de mercado simulado.", "Vender posição", true)) return;
     await runOperation("Venda Testnet", () => request("/trading/manual-sell", { method: "POST", body: JSON.stringify({ confirmation: "VENDER BTC TESTNET" }) }));
   };
 
@@ -164,27 +273,47 @@ export default function Home() {
     setNotifications((current) => current.map((item) => ({ ...item, read_at: item.read_at ?? new Date().toISOString() })));
   };
 
-  const lastPrice = candles.at(-1)?.close;
+  const candles = useMemo(() => marketCandles[selectedSymbol] ?? [], [marketCandles, selectedSymbol]);
+  const lastCandle = candles.at(-1);
+  const lastPrice = lastCandle?.close;
   const activePositions = positions.filter((item) => item.status === "OPEN");
   const realized = positions.reduce((total, item) => total + Number(item.realized_pnl ?? 0), 0);
   const activeModel = models.find((item) => item.status === "ACTIVE");
-  const chart = useMemo(() => {
-    const values = candles.map((item) => Number(item.close));
-    if (!values.length) return "";
-    const min = Math.min(...values); const max = Math.max(...values); const span = max - min || 1;
-    return values.map((value, index) => `${(index / Math.max(values.length - 1, 1)) * 100},${88 - ((value - min) / span) * 72}`).join(" ");
+  const candleChart = useMemo(() => {
+    if (!candles.length) return [];
+    const min = Math.min(...candles.map((item) => Number(item.low)));
+    const max = Math.max(...candles.map((item) => Number(item.high)));
+    const span = max - min || 1;
+    const y = (value: number) => 94 - ((value - min) / span) * 88;
+    const step = 100 / candles.length;
+    return candles.map((item, index) => {
+      const open = Number(item.open); const close = Number(item.close);
+      return { id: item.id, x: step * index + step / 2, width: Math.max(0.7, step * 0.58), high: y(Number(item.high)), low: y(Number(item.low)), open: y(open), close: y(close), up: close >= open };
+    });
   }, [candles]);
+
+  const candleChange = lastCandle ? ((Number(lastCandle.close) - Number(lastCandle.open)) / Number(lastCandle.open)) * 100 : 0;
+  const candleTimeLabels = useMemo(() => {
+    if (!candles.length) return [];
+    const labelCount = Math.min(5, candles.length);
+    const indexes = Array.from({ length: labelCount }, (_, index) => Math.round((index / Math.max(labelCount - 1, 1)) * (candles.length - 1)));
+    return indexes.map((index) => ({
+      id: candles[index].id,
+      label: new Date(candles[index].open_time).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+    }));
+  }, [candles]);
+  const queryPeriod = candles.length ? `${new Date(candles[0].open_time).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} → ${new Date(candles.at(-1)!.close_time).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : "Aguardando dados";
 
   if (authChecking) return <main className="auth-shell"><div className="auth-card"><span className="brand-mark">TB</span><p>Validando sessão segura…</p></div></main>;
 
-  if (!auth) return <main className="auth-shell"><form className="auth-card" onSubmit={(event) => void login(event)}><span className="brand-mark">TB</span><div><p className="eyebrow">Acesso protegido</p><h1>TradeBrain</h1><p className="auth-copy">Entre com as credenciais do operador e o código de seis dígitos do seu autenticador.</p></div><label>E-mail<input name="email" type="email" autoComplete="username" required /></label><label>Senha<input name="password" type="password" autoComplete="current-password" minLength={12} required /></label><label>Código autenticador<input name="totp" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required /></label>{loginError && <p className="auth-error" role="alert">{loginError}</p>}<button type="submit">Entrar com segurança</button><small>O acesso expira automaticamente após o período configurado.</small></form></main>;
+  if (!auth) return <main className="auth-shell"><form className="auth-card" onSubmit={(event) => void login(event)}><span className="brand-mark">TB</span><div><p className="eyebrow">Acesso protegido</p><h1>TradeBrain</h1><p className="auth-copy">Entre com as credenciais do operador e o código de seis dígitos do seu autenticador.</p></div><label>E-mail<input name="email" type="email" autoComplete="username" required disabled={loginRetrySeconds > 0} /></label><label>Senha<input name="password" type="password" autoComplete="current-password" minLength={12} required disabled={loginRetrySeconds > 0} /></label><label>Código autenticador<input name="totp" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required disabled={loginRetrySeconds > 0} /></label>{loginError && <p className="auth-error" role="alert">{loginError}{loginRetrySeconds > 0 && <> Tente novamente em {Math.ceil(loginRetrySeconds / 60)} min.</>}</p>}<button type="submit" disabled={loginRetrySeconds > 0}>{loginRetrySeconds > 0 ? `Aguarde ${Math.ceil(loginRetrySeconds / 60)} min` : "Entrar com segurança"}</button><small>O acesso expira automaticamente após o período configurado.</small></form></main>;
 
   return (
     <main className="app-shell">
       <aside className="sidebar">
         <div className="brand"><span className="brand-mark">TB</span><div><strong>TradeBrain</strong><small>Quantitative desk</small></div></div>
         <nav aria-label="Navegação principal">
-          <a className="active" href="#overview">Visão geral</a><a href="#market">Mercado</a><a href="#operations">Operação</a><a href="#positions">Posições</a><a href="#notifications">Notificações</a><a href="#audit">Auditoria</a><a href="#research">Pesquisa & IA</a>
+          {[{ id: "overview", label: "Visão geral" }, { id: "market", label: "Mercado" }, { id: "operations", label: "Operação" }, { id: "orders", label: "Compras e vendas" }, { id: "positions", label: "Posições" }, { id: "notifications", label: "Notificações" }, { id: "audit", label: "Auditoria" }, { id: "research", label: "Pesquisa & IA" }].map((item) => <a key={item.id} className={activeSection === item.id ? "active" : ""} href={`#${item.id}`} aria-current={activeSection === item.id ? "page" : undefined} onClick={() => setActiveSection(item.id)}>{item.label}</a>)}
         </nav>
         <div className="sidebar-foot"><span className={`pulse ${error ? "danger" : ""}`} />{error ? "API desconectada" : "Binance Testnet"}</div>
       </aside>
@@ -192,12 +321,10 @@ export default function Home() {
       <section className="workspace">
         <header className="topbar">
           <div><p className="eyebrow">Centro de operações</p><h1>Bom dia, Denilson.</h1></div>
-          <div className="top-actions"><a className="notification-link" href="#notifications" aria-label={`${notifications.filter((item) => !item.read_at).length} notificações não lidas`}>Alertas <b>{notifications.filter((item) => !item.read_at).length}</b></a><span className="operator">{auth.email}</span><button className="ghost" onClick={() => void load()} disabled={busy}>{busy ? "Atualizando…" : "Atualizar"}</button><button className="ghost" onClick={() => void logout()}>Sair</button><button className="emergency" onClick={() => void emergencyStop()}>Parada de emergência</button></div>
+          <div className="top-actions"><a className="notification-link" href="#notifications" aria-label={`${notifications.filter((item) => !item.read_at).length} notificações não lidas`}>Alertas <b>{notifications.filter((item) => !item.read_at).length}</b></a><span className="operator">{auth.email}</span><button className="ghost" onClick={() => void Promise.all([load(), loadMarket(marketConfig.symbols, selectedInterval)])} disabled={busy || marketUpdating}>{busy || marketUpdating ? "Atualizando…" : "Atualizar"}</button><button className="ghost" onClick={() => void logout()}>Sair</button><button className="emergency" onClick={() => void emergencyStop()}>Parada de emergência</button></div>
         </header>
 
         {error && <div className="notice"><strong>Conecte a API local.</strong><span>{error} · endereço esperado: {API}</span></div>}
-        {operation && <div className="operation-notice" role="status">{operation}</div>}
-
         <section className="daily-summary" id="daily" aria-label="Resumo operacional do dia">
           <div><p className="eyebrow">Resumo de hoje</p><strong>{status?.mode === "TESTNET_TRADING" ? "Operação Testnet ativa" : status?.mode === "MONITOR" ? "Mercado em monitoramento" : "Bot sem novas entradas"}</strong></div>
           <dl>
@@ -205,23 +332,25 @@ export default function Home() {
             <div><dt>Em aberto</dt><dd>{activePositions.length}</dd></div>
             <div><dt>Modelo</dt><dd>{activeModel?.algorithm.replaceAll("_", " ") ?? "—"}</dd></div>
           </dl>
-          <button className="summary-refresh" onClick={() => void load()} disabled={busy} aria-label="Atualizar dados do painel">{busy ? "Atualizando…" : "Atualizar agora"}</button>
+          <button className="summary-refresh" onClick={() => void Promise.all([load(), loadMarket(marketConfig.symbols, selectedInterval)])} disabled={busy || marketUpdating} aria-label="Atualizar dados do painel">{busy || marketUpdating ? "Atualizando…" : "Atualizar agora"}</button>
         </section>
 
         <section className="operations-grid" id="operations">
           <article className="panel control-panel"><div className="panel-title"><div><p className="eyebrow">Controle seguro</p><h3>Operação Testnet</h3></div><span>Confirmação obrigatória</span></div>
             <div className="mode-control"><span>Modo atual: <b>{status?.mode ?? "—"}</b></span><div><button onClick={() => void changeMode("OFF")} disabled={busy || status?.mode === "OFF"}>OFF</button><button onClick={() => void changeMode("MONITOR")} disabled={busy || status?.mode === "MONITOR"}>Monitor</button><button className="trade-mode" onClick={() => void changeMode("TESTNET_TRADING")} disabled={busy || status?.mode === "TESTNET_TRADING"}>Testnet trading</button></div></div>
-            <div className="manual-trade"><label>Valor da compra (USDT)<input type="number" min="10" max="20" step="1" value={quoteAmount} onChange={(event) => setQuoteAmount(Math.min(20, Math.max(10, Number(event.target.value))))} /></label><button className="buy" onClick={() => void manualBuy()} disabled={busy || status?.mode !== "TESTNET_TRADING"}>Comprar BTC</button><button className="sell" onClick={() => void manualSell()} disabled={busy || status?.mode !== "TESTNET_TRADING" || !activePositions.length}>Vender posição</button></div>
-            <p className="safety-copy">Ordens limitadas a US$ 10–20 e exclusivamente na Binance Spot Testnet.</p>
+            <div className="manual-trade"><label>Valor da compra (USDT)<input type="number" min="5" max="20" step="1" value={quoteAmount} onChange={(event) => setQuoteAmount(Math.min(20, Math.max(5, Number(event.target.value))))} /></label><button className="buy" onClick={() => void manualBuy()} disabled={busy || status?.mode !== "TESTNET_TRADING"}>Comprar BTC</button><button className="sell" onClick={() => void manualSell()} disabled={busy || status?.mode !== "TESTNET_TRADING" || !activePositions.length}>Vender posição</button></div>
+            <p className="safety-copy">Ordens limitadas a US$ 5–20, mínimo aceito por BTCUSDT na Binance Spot Testnet.</p>
           </article>
 
-          <article className="panel risk-panel"><div className="panel-title"><div><p className="eyebrow">Guardrails</p><h3>Limites de risco</h3></div><span>{risk?.auto_entry_enabled ? "Entrada automática ativa" : "Entrada automática bloqueada"}</span></div>{risk && <div className="risk-form"><label>Máximo por trade<input type="number" min="10" max="20" value={risk.max_quote_amount_per_trade} onChange={(event) => setRisk({ ...risk, max_quote_amount_per_trade: Number(event.target.value) })} /></label><label>Perda diária máxima<input type="number" min="1" max="500" value={risk.max_daily_loss} onChange={(event) => setRisk({ ...risk, max_daily_loss: Number(event.target.value) })} /></label><label>Cooldown (minutos)<input type="number" min="1" max="1440" value={risk.cooldown_minutes} onChange={(event) => setRisk({ ...risk, cooldown_minutes: Number(event.target.value) })} /></label><label className="check"><input type="checkbox" checked={risk.auto_entry_enabled} onChange={(event) => setRisk({ ...risk, auto_entry_enabled: event.target.checked })} />Permitir entrada automática</label><button onClick={() => void saveRisk()} disabled={busy}>Salvar limites</button></div>}</article>
+          <article className="panel risk-panel"><div className="panel-title"><div><p className="eyebrow">Proteção operacional</p><h3>Limites de risco</h3></div><span>{risk?.auto_entry_enabled ? "Entrada automática ativa" : "Entrada automática bloqueada"}</span></div><p className="panel-explanation">Esses valores limitam novas entradas. Para testar uma banca de referência de R$ 500, comece com 5 USDT por operação. A execução permanece em USDT e apenas uma posição pode ficar aberta.</p>{risk && <div className="risk-form"><label>Máximo por operação (USDT)<input type="number" min="5" max="20" step="1" value={risk.max_quote_amount_per_trade} onChange={(event) => setRisk({ ...risk, max_quote_amount_per_trade: Number(event.target.value) })} /><small>Permitido: US$ 5–20. A ordem automática usa exatamente este valor.</small></label><label>Perda máxima por dia (USDT)<input type="number" min="1" max="500" step="1" value={risk.max_daily_loss} onChange={(event) => setRisk({ ...risk, max_daily_loss: Number(event.target.value) })} /><small>Ao atingir o valor, novas entradas são bloqueadas.</small></label><label>Intervalo entre operações<input type="number" min="1" max="1440" value={risk.cooldown_minutes} onChange={(event) => setRisk({ ...risk, cooldown_minutes: Number(event.target.value) })} /><small>Em minutos, de 1 a 1.440.</small></label><div className="risk-locked"><span>Posições simultâneas</span><strong>{risk.max_open_positions}</strong><small>Limite de segurança fixo nesta fase.</small></div><label className="check"><input type="checkbox" checked={risk.auto_entry_enabled} onChange={(event) => setRisk({ ...risk, auto_entry_enabled: event.target.checked })} />Permitir entrada automática dentro desses limites</label><button onClick={() => void saveRisk()} disabled={busy}>Revisar e salvar</button></div>}</article>
         </section>
 
         <section className="content-grid account-signals">
-          <article className="panel"><div className="panel-title"><div><p className="eyebrow">Custódia Testnet</p><h3>Saldos disponíveis</h3></div><span>{account?.environment ?? "indisponível"}</span></div><div className="balance-grid">{account?.balances.length ? account.balances.map((balance) => <div key={balance.asset}><strong>{balance.asset}</strong><span>{Number(balance.free).toLocaleString("pt-BR", { maximumFractionDigits: 8 })}</span><small>{Number(balance.locked) ? `${balance.locked} bloqueado` : "Livre"}</small></div>) : <p className="empty-inline">Saldo Testnet indisponível.</p>}</div></article>
-          <article className="panel"><div className="panel-title"><div><p className="eyebrow">Estratégias</p><h3>Sinais recentes</h3></div><span>{signals.length} sinais</span></div><div className="signal-list">{signals.length ? signals.slice(0, 5).map((signal) => <div key={signal.id}><span className={`signal-type ${signal.signal_type.toLowerCase()}`}>{signal.signal_type}</span><p><b>{signal.symbol}</b><small>{signal.strategy_name} · {signal.confidence == null ? "sem confiança" : `${signal.confidence}%`}</small></p></div>) : <p className="empty-inline">Nenhum sinal recente.</p>}</div></article>
+          <article className="panel"><div className="panel-title"><div><p className="eyebrow">Carteira simulada</p><h3>Saldos da Binance Testnet</h3></div><span>{account?.environment === "testnet" ? "Sem dinheiro real" : "Indisponível"}</span></div><p className="panel-explanation">Valores fictícios fornecidos pela Binance para testar compras e vendas. “Disponível” pode ser usado; “bloqueado” está reservado em ordens abertas.</p><div className="balance-grid">{account?.balances.length ? account.balances.map((balance) => <div key={balance.asset}><strong>{balance.asset}</strong><span>{Number(balance.free).toLocaleString("pt-BR", { maximumFractionDigits: 8 })}</span><small>Disponível</small>{Number(balance.locked) > 0 && <em>{Number(balance.locked).toLocaleString("pt-BR", { maximumFractionDigits: 8 })} bloqueado</em>}</div>) : <p className="empty-inline">A carteira Testnet não retornou saldos. Verifique a chave da Binance Testnet.</p>}</div></article>
+          <article className="panel"><div className="panel-title"><div><p className="eyebrow">Leitura das estratégias</p><h3>Sinais recentes</h3></div><span>{signals.length} registros</span></div><p className="panel-explanation">BUY sugere compra, SELL sugere venda e HOLD recomenda aguardar. Um sinal nunca envia uma ordem sozinho.</p><div className="signal-list">{signals.length ? signals.slice(0, 5).map((signal) => <div key={signal.id}><span className={`signal-type ${signal.signal_type.toLowerCase()}`}>{signal.signal_type === "BUY" ? "COMPRA" : signal.signal_type === "SELL" ? "VENDA" : "AGUARDAR"}</span><p><b>{signal.symbol} · {signal.timeframe}</b><span>{money(signal.price)} · {signal.confidence == null ? "confiança não informada" : `${signal.confidence}% de confiança`}</span><small>{signal.strategy_name} · {new Date(signal.created_at).toLocaleString("pt-BR")}</small>{signal.details && <small>{signal.details}</small>}</p></div>) : <p className="empty-inline">Nenhuma estratégia gerou sinal até agora.</p>}</div></article>
         </section>
+
+        <section className="panel orders-panel" id="orders"><div className="panel-title"><div><p className="eyebrow">Histórico de execução</p><h3>Compras e vendas Testnet</h3></div><span>{orders.length} ordens recentes</span></div><p className="panel-explanation">Registro das ordens enviadas à Binance Testnet. BUY é compra e SELL é venda; nenhuma linha representa dinheiro real.</p><div className="table-wrap"><table><thead><tr><th>Data</th><th>Ação</th><th>Ativo</th><th>Status</th><th>Valor solicitado</th><th>Quantidade executada</th><th>Preço médio</th></tr></thead><tbody>{orders.length ? orders.map((order) => <tr key={order.id}><td>{new Date(order.created_at).toLocaleString("pt-BR")}</td><td><span className={`order-side ${order.side.toLowerCase()}`}>{order.side === "BUY" ? "COMPRA" : "VENDA"}</span></td><td><b>{order.symbol}</b></td><td>{order.status}</td><td>{money(order.requested_quote_amount)}</td><td>{order.executed_quantity == null ? "—" : Number(order.executed_quantity).toFixed(8)}</td><td>{order.executed_price == null ? "—" : money(order.executed_price)}</td></tr>) : <tr><td colSpan={7} className="empty">Nenhuma compra ou venda foi executada na Testnet.</td></tr>}</tbody></table></div></section>
 
         <section className="panel audit-panel" id="audit"><div className="panel-title"><div><p className="eyebrow">Rastreabilidade</p><h3>Auditoria operacional</h3></div><span>{auditEvents.length} eventos recentes</span></div><div className="audit-list">{auditEvents.length ? auditEvents.map((event) => <div className="audit-row" key={event.id}><span className="audit-dot" /><div><strong>{event.action.replaceAll("_", " ")}</strong><small>{event.actor} · {event.resource}{event.resource_id ? ` #${event.resource_id}` : ""}</small></div><time dateTime={event.created_at}>{new Date(event.created_at).toLocaleString("pt-BR")}</time></div>) : <p className="empty-inline">As próximas ações operacionais aparecerão aqui.</p>}</div></section>
 
@@ -229,11 +358,15 @@ export default function Home() {
 
         <section className="hero-grid" id="overview">
           <article className="market-card" id="market">
-            <div className="card-head"><div><p className="eyebrow">BTC / USDT · 15m</p><h2>{lastPrice ? money(lastPrice) : "—"}</h2></div><span className="live-pill">Mercado ao vivo</span></div>
-            <div className="chart-wrap" aria-label="Histórico recente do preço do Bitcoin">
-              {chart ? <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img"><defs><linearGradient id="area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#53e0b1" stopOpacity=".35"/><stop offset="1" stopColor="#53e0b1" stopOpacity="0"/></linearGradient></defs><polygon points={`0,100 ${chart} 100,100`} fill="url(#area)"/><polyline points={chart} fill="none" stroke="#53e0b1" strokeWidth="2" vectorEffect="non-scaling-stroke"/></svg> : <div className="empty-chart">Aguardando candles</div>}
+            <div className="market-symbols" aria-label="Mercados configurados">{marketConfig.symbols.map((symbol) => { const item = marketCandles[symbol]?.at(-1); const change = item ? ((Number(item.close) - Number(item.open)) / Number(item.open)) * 100 : 0; return <button key={symbol} className={selectedSymbol === symbol ? "active" : ""} onClick={() => setSelectedSymbol(symbol)}><span>{symbol.replace("USDT", " / USDT")}</span><strong>{item ? money(item.close) : "—"}</strong><small className={change >= 0 ? "positive" : "negative"}>{item ? `${change >= 0 ? "+" : ""}${change.toFixed(2)}% no candle` : "Aguardando dados"}</small></button>; })}</div>
+            <div className="card-head"><div><p className="eyebrow">{selectedSymbol.replace("USDT", " / USDT")} · {selectedInterval}</p><h2>{lastPrice ? money(lastPrice) : "—"}</h2><small className={candleChange >= 0 ? "positive" : "negative"}>{lastCandle ? `${candleChange >= 0 ? "+" : ""}${candleChange.toFixed(2)}% neste candle` : ""}</small></div><div className="market-live"><span className={`live-pill ${marketUpdating ? "updating" : ""}`}>{marketUpdating ? "Atualizando…" : "Monitoramento ativo"}</span><small>Próxima consulta em {nextMarketRefresh}s</small></div></div>
+            <div className="chart-wrap candlestick-chart" aria-label={`Candles recentes de ${selectedSymbol}`}>
+              {candleChart.length ? <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img">{candleChart.map((item) => <g key={item.id} className={item.up ? "candle-up" : "candle-down"}><line x1={item.x} y1={item.high} x2={item.x} y2={item.low}/><rect x={item.x - item.width / 2} y={Math.min(item.open, item.close)} width={item.width} height={Math.max(1, Math.abs(item.close - item.open))}/></g>)}</svg> : <div className="empty-chart">Aguardando candles de {selectedSymbol}</div>}
             </div>
-            <div className="market-meta"><span><small>Candles</small>{candles.length}</span><span><small>Fonte</small>Binance Spot</span><span><small>Ambiente</small>Testnet</span></div>
+            <div className="chart-time-axis" aria-label="Horários dos candles">{candleTimeLabels.map((item) => <time key={item.id}>{item.label}</time>)}</div>
+            <div className="query-period"><span>Período consultado</span><strong>{queryPeriod}</strong><small>{candles.length} candles · intervalo {selectedInterval} · incluindo candle em formação</small></div>
+            <div className="market-meta"><span><small>Último candle</small>{lastCandle ? new Date(lastCandle.open_time).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "—"}</span><span><small>Status</small>{lastCandle?.is_closed ? "Fechado" : "Em formação"}</span><span><small>Verificado</small>{marketCheckedAt ? marketCheckedAt.toLocaleTimeString("pt-BR") : "—"}</span><span><small>Fonte</small>Binance Testnet</span></div>
+            <div className="candle-table"><div className="candle-table-title"><strong>Candles recentes</strong><span>OHLC · volume · negócios</span></div><div className="table-wrap"><table><thead><tr><th>Horário</th><th>Abertura</th><th>Máxima</th><th>Mínima</th><th>Fechamento</th><th>Volume</th><th>Negócios</th><th>Status</th></tr></thead><tbody>{candles.slice(-8).reverse().map((candle) => <tr key={candle.id}><td>{new Date(candle.open_time).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</td><td>{money(candle.open)}</td><td>{money(candle.high)}</td><td>{money(candle.low)}</td><td className={Number(candle.close) >= Number(candle.open) ? "positive" : "negative"}>{money(candle.close)}</td><td>{Number(candle.volume).toLocaleString("pt-BR", { maximumFractionDigits: 4 })}</td><td>{candle.trades.toLocaleString("pt-BR")}</td><td><span className={`candle-state ${candle.is_closed ? "closed" : "forming"}`}>{candle.is_closed ? "Fechado" : "Em formação"}</span></td></tr>)}</tbody></table></div></div>
           </article>
 
           <div className="metric-stack">

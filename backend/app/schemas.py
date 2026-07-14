@@ -37,7 +37,7 @@ class SignalResponse(SignalCreate):
 
 class ManualBuyRequest(BaseModel):
     confirmation: str
-    quote_amount: float = Field(default=20.0, ge=10.0, le=20.0)
+    quote_amount: float = Field(default=5.0, ge=5.0, le=20.0)
 
 
 class OrderResponse(BaseModel):
@@ -82,7 +82,7 @@ class PositionResponse(BaseModel):
 class TradingRiskSettingsUpdate(BaseModel):
     auto_entry_enabled: bool
     max_quote_amount_per_trade: float = Field(
-        ge=10.0,
+        ge=5.0,
         le=20.0,
     )
     max_daily_loss: float = Field(

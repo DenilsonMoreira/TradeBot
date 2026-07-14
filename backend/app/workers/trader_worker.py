@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app.binance.client import BinanceTestnetClient
 from app.database import Base, SessionLocal, engine
-from app.models import BotMode, BotStatus, Position, PositionStatus, Signal
+from app.models import BotMode, BotStatus, Position, PositionStatus, Signal, TradingRiskSettings
 from app.services.trading_service import (
     can_open_automatic_position,
     execute_market_buy,
@@ -148,16 +148,22 @@ async def process_symbol(
                 )
 
                 if allowed:
+                    risk_settings = db.get(TradingRiskSettings, 1)
+                    if risk_settings is None:
+                        logger.error("Configurações de risco desapareceram antes da ordem automática.")
+                        return
                     logger.warning(
-                        "%s | BUY automático autorizado. "
+                        "%s | BUY automático autorizado em %.2f USDT. "
                         "Enviando ordem Testnet.",
                         symbol,
+                        risk_settings.max_quote_amount_per_trade,
                     )
 
                     await execute_market_buy(
                         db=db,
                         client=client,
                         symbol=symbol,
+                        quote_amount=risk_settings.max_quote_amount_per_trade,
                     )
                 else:
                     logger.info(
