@@ -135,7 +135,11 @@ Web operacional
 
 ✔ Severidade, contador de não lidas e confirmação de leitura
 
-Pendente: implantação HTTPS
+✔ Ambiente de produção com proxy HTTPS e renovação automática
+
+✔ Cookies seguros, headers defensivos e serviços internos não expostos
+
+Pendente: apontar domínio e executar a publicação no servidor
 
 
 # O que muda no nosso desenvolvimento?

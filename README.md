@@ -67,6 +67,24 @@ O app usa a mesma senha e TOTP do painel, guarda a sessão curta no SecureStore
 do dispositivo e envia o token CSRF nas ações críticas. Nenhuma chave da Binance
 é armazenada no aplicativo.
 
+## Publicação web com HTTPS
+
+A implantação de produção usa Caddy como única porta de entrada. O painel fica
+em `/` e a API em `/api`, enquanto API, PostgreSQL e workers permanecem na rede
+interna do Docker. O Caddy obtém e renova o certificado automaticamente.
+
+Pré-requisitos: servidor com Docker, domínio apontando para o IP público e
+portas TCP 80/443 e UDP 443 liberadas. Depois:
+
+```powershell
+Copy-Item .env.production.example .env.production
+# Preencha domínio, banco, Binance Testnet e credenciais de autenticação.
+.\deploy\deploy-production.ps1
+```
+
+Em produção, `AUTH_COOKIE_SECURE=true` é obrigatório. Não exponha diretamente
+as portas 3000, 5432 ou 8000 e mantenha o ambiente Binance em Testnet.
+
 ## API de candles
 
 ```text
