@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from app.ai.registry import ModelRegistry
 from app.repositories.candle_repository import CandleRepository
@@ -22,16 +22,14 @@ class ResearchAutomationService:
         self.training = training
         self.registry = registry
 
-    def evaluate_market(
+    def get_market_status(
         self,
         symbol: str,
         interval: str,
         *,
         limit: int,
         horizon: int,
-        train_ratio: float,
         minimum_new_candles: int = 0,
-        promote_qualified: bool = False,
     ) -> dict:
         latest = self.research.get_latest_dataset(symbol, interval, horizon)
         if latest is None:
@@ -47,25 +45,55 @@ class ResearchAutomationService:
                 interval,
                 last_evaluated_at,
             )
-            # The horizon candles already existed after the last labelled row.
-            # Adding them prevents overlap with the previous final test window.
             required = max(
                 latest.test_size + horizon,
                 minimum_new_candles,
             )
 
-        result = {
+        missing = max(0, required - available)
+        estimated_ready_at = None
+        interval_seconds = _interval_seconds(interval)
+        if missing and interval_seconds is not None:
+            estimated_ready_at = (
+                datetime.now(UTC) + timedelta(seconds=missing * interval_seconds)
+            ).isoformat()
+        return {
             "symbol": symbol.upper(),
             "interval": interval,
             "due": available >= required,
             "available_new_candles": available,
             "required_new_candles": required,
+            "missing_candles": missing,
+            "progress_percent": min(100.0, available / max(required, 1) * 100),
             "last_evaluated_at": (
                 last_evaluated_at.isoformat()
                 if last_evaluated_at is not None
                 else None
             ),
+            "estimated_ready_at": estimated_ready_at,
             "dataset_id": latest.id if latest is not None else None,
+        }
+
+    def evaluate_market(
+        self,
+        symbol: str,
+        interval: str,
+        *,
+        limit: int,
+        horizon: int,
+        train_ratio: float,
+        minimum_new_candles: int = 0,
+        promote_qualified: bool = False,
+    ) -> dict:
+        latest = self.research.get_latest_dataset(symbol, interval, horizon)
+        result = {
+            **self.get_market_status(
+                symbol,
+                interval,
+                limit=limit,
+                horizon=horizon,
+                minimum_new_candles=minimum_new_candles,
+            ),
             "trained_models": 0,
             "recommended": None,
             "activated": None,
@@ -106,3 +134,13 @@ class ResearchAutomationService:
             "activated": activated.algorithm if activated else None,
         })
         return result
+
+
+def _interval_seconds(interval: str) -> int | None:
+    units = {"m": 60, "h": 3600, "d": 86400}
+    if len(interval) < 2 or interval[-1] not in units:
+        return None
+    try:
+        return int(interval[:-1]) * units[interval[-1]]
+    except ValueError:
+        return None

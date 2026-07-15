@@ -22,6 +22,7 @@ services:
       - .env
     environment:
       TZ: America/Fortaleza      
+      RESEARCH_AUTOMATION_ENABLED: "true"
     ports:
       - "8000:8000"
     volumes:

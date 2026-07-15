@@ -88,3 +88,25 @@ class ModelResponse(BaseModel):
     deactivated_at: datetime | None
     created_at: datetime
     model_config = {"from_attributes": True}
+
+
+class ResearchMarketStatus(BaseModel):
+    symbol: str
+    interval: str
+    due: bool
+    available_new_candles: int
+    required_new_candles: int
+    missing_candles: int
+    progress_percent: float
+    last_evaluated_at: datetime | None
+    estimated_ready_at: datetime | None
+    dataset_id: int | None
+
+
+class ResearchAutomationStatus(BaseModel):
+    enabled: bool
+    promote_qualified: bool
+    evaluation_interval_seconds: int
+    dataset_limit: int
+    horizon: int
+    markets: list[ResearchMarketStatus]

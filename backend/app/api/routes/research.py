@@ -1,18 +1,64 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.dependencies import get_backtest_service, get_dataset_service, get_ensemble_service, get_model_registry, get_operator_session, get_prediction_service, get_research_repository, get_training_service, require_operator_csrf
+from app.api.dependencies import get_backtest_service, get_dataset_service, get_ensemble_service, get_model_registry, get_operator_session, get_prediction_service, get_research_automation_service, get_research_repository, get_training_service, require_operator_csrf
 from app.ai.registry import ModelRegistry
 from app.backtest.engine import BacktestConfig
 from app.repositories.research_repository import ResearchRepository
-from app.schemas.research import BacktestRequest, BacktestResponse, DatasetRequest, DatasetResponse, EnsembleRequest, ModelResponse, PredictionRequest, PredictionResponse, TrainingRequest
+from app.schemas.research import BacktestRequest, BacktestResponse, DatasetRequest, DatasetResponse, EnsembleRequest, ModelResponse, PredictionRequest, PredictionResponse, ResearchAutomationStatus, TrainingRequest
 from app.services.ensemble_service import EnsembleService
 from app.services.prediction_service import PredictionService
 from app.services.backtest_service import BacktestService
 from app.services.dataset_service import DatasetService
 from app.services.training_service import TrainingService
+from app.services.research_automation_service import ResearchAutomationService
+from app.config import settings
 
 
 router = APIRouter(tags=["research"])
+
+
+@router.get(
+    "/research/automation/status",
+    response_model=ResearchAutomationStatus,
+    dependencies=[Depends(get_operator_session)],
+)
+def research_automation_status(
+    service: ResearchAutomationService = Depends(
+        get_research_automation_service
+    ),
+):
+    symbols = [
+        item.strip().upper()
+        for item in settings.candle_symbols.split(",")
+        if item.strip()
+    ]
+    intervals = [
+        item.strip()
+        for item in settings.candle_intervals.split(",")
+        if item.strip()
+    ]
+    return {
+        "enabled": settings.research_automation_enabled,
+        "promote_qualified": settings.research_promote_qualified,
+        "evaluation_interval_seconds": (
+            settings.research_evaluation_interval_seconds
+        ),
+        "dataset_limit": settings.research_dataset_limit,
+        "horizon": settings.research_horizon,
+        "markets": [
+            service.get_market_status(
+                symbol,
+                interval,
+                limit=settings.research_dataset_limit,
+                horizon=settings.research_horizon,
+                minimum_new_candles=(
+                    settings.research_minimum_new_candles
+                ),
+            )
+            for symbol in symbols
+            for interval in intervals
+        ],
+    }
 
 
 @router.post("/backtests/run", response_model=BacktestResponse, dependencies=[Depends(require_operator_csrf)])

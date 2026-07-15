@@ -9,7 +9,7 @@ type BotStatus = { mode: string; updated_at: string };
 type Position = { id: string; symbol: string; status: string; quantity: number; entry_price: number; realized_pnl: number | null };
 type Candle = { id: number; symbol: string; interval: string; open: string; high: string; low: string; close: string; volume: string; trades: number; open_time: string; close_time: string; is_closed: boolean };
 type MarketConfig = { symbols: string[]; intervals: string[]; dashboard_refresh_seconds: number };
-type Model = { id: number; algorithm: string; status: string; metrics: Record<string, number | string | null> };
+type Model = { id: number; dataset_id: number; algorithm: string; version: string; status: string; metrics: Record<string, number | string | null> };
 type Backtest = { id: number; strategy: string; symbol: string; final_capital: string; metrics: Record<string, number | string | null> };
 type AuthSession = { authenticated: boolean; email: string; csrf_token: string };
 type Balance = { asset: string; free: string; locked: string };
@@ -19,6 +19,8 @@ type Signal = { id: string; symbol: string; timeframe: string; signal_type: stri
 type Order = { id: string; symbol: string; side: string; order_type: string; status: string; requested_quote_amount: number; executed_quantity: number | null; executed_price: number | null; error_message: string | null; created_at: string };
 type AuditEvent = { id: number; actor: string; action: string; resource: string; resource_id: string | null; details: Record<string, unknown>; created_at: string };
 type Notification = { id: number; severity: string; category: string; title: string; message: string; resource_id: string | null; read_at: string | null; created_at: string };
+type ResearchMarketStatus = { symbol: string; interval: string; due: boolean; available_new_candles: number; required_new_candles: number; missing_candles: number; progress_percent: number; last_evaluated_at: string | null; estimated_ready_at: string | null; dataset_id: number | null };
+type ResearchAutomationStatus = { enabled: boolean; promote_qualified: boolean; evaluation_interval_seconds: number; dataset_limit: number; horizon: number; markets: ResearchMarketStatus[] };
 
 let csrfToken = "";
 
@@ -81,6 +83,7 @@ export default function Home() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [researchAutomation, setResearchAutomation] = useState<ResearchAutomationStatus | null>(null);
   const [activeSection, setActiveSection] = useState("overview");
 
   const loadMarket = useCallback(async (symbols: string[], interval: string) => {
@@ -106,7 +109,7 @@ export default function Home() {
     setBusy(true);
     setError("");
     try {
-      const [nextStatus, nextPositions, nextMarketConfig, nextModels, nextBacktests, nextRisk, nextSignals, nextOrders, nextAuditEvents, nextNotifications] = await Promise.all([
+      const [nextStatus, nextPositions, nextMarketConfig, nextModels, nextBacktests, nextRisk, nextSignals, nextOrders, nextAuditEvents, nextNotifications, nextResearchAutomation] = await Promise.all([
         request<BotStatus>("/bot/status"),
         request<Position[]>("/positions?limit=20"),
         request<MarketConfig>("/candles/config"),
@@ -117,6 +120,7 @@ export default function Home() {
         request<Order[]>("/orders?limit=20"),
         request<AuditEvent[]>("/audit-events?limit=12"),
         request<Notification[]>("/notifications?limit=12"),
+        request<ResearchAutomationStatus>("/research/automation/status"),
       ]);
       setStatus(nextStatus);
       setPositions(nextPositions);
@@ -130,6 +134,7 @@ export default function Home() {
       setOrders(nextOrders);
       setAuditEvents(nextAuditEvents);
       setNotifications(nextNotifications);
+      setResearchAutomation(nextResearchAutomation);
       void request<Account>("/account/balance").then(setAccount).catch(() => setAccount(null));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível carregar o painel");
@@ -303,6 +308,12 @@ export default function Home() {
     }));
   }, [candles]);
   const queryPeriod = candles.length ? `${new Date(candles[0].open_time).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} → ${new Date(candles.at(-1)!.close_time).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : "Aguardando dados";
+  const researchCandidates = useMemo(() => (researchAutomation?.markets ?? []).map((market) => ({
+    market,
+    model: models
+      .filter((item) => item.dataset_id === market.dataset_id && item.algorithm !== "baseline")
+      .sort((first, second) => Number(second.metrics.walk_forward_return ?? -1) - Number(first.metrics.walk_forward_return ?? -1))[0],
+  })), [models, researchAutomation]);
 
   if (authChecking) return <main className="auth-shell"><div className="auth-card"><span className="brand-mark">TB</span><p>Validando sessão segura…</p></div></main>;
 
@@ -381,10 +392,29 @@ export default function Home() {
             <div className="table-wrap"><table><thead><tr><th>Ativo</th><th>Status</th><th>Quantidade</th><th>Entrada</th><th>Resultado</th></tr></thead><tbody>{positions.length ? positions.slice(0, 6).map((item) => <tr key={item.id}><td><b>{item.symbol}</b></td><td><span className={`status ${item.status.toLowerCase()}`}>{item.status}</span></td><td>{Number(item.quantity).toFixed(6)}</td><td>{money(item.entry_price)}</td><td className={Number(item.realized_pnl ?? 0) >= 0 ? "positive" : "negative"}>{item.realized_pnl == null ? "—" : money(item.realized_pnl)}</td></tr>) : <tr><td colSpan={5} className="empty">Nenhuma posição registrada</td></tr>}</tbody></table></div>
           </article>
 
-          <article className="panel intelligence" id="research"><div className="panel-title"><div><p className="eyebrow">Inteligência</p><h3>Model registry</h3></div><span>{models.length} modelos</span></div>
+          <article className="panel intelligence"><div className="panel-title"><div><p className="eyebrow">Inteligência</p><h3>Model registry</h3></div><span>{models.length} modelos</span></div>
             <div className="model-focus"><span className="model-icon">AI</span><div><small>Modelo ativo</small><strong>{activeModel?.algorithm.replaceAll("_", " ") ?? "Nenhum promovido"}</strong><p>{activeModel ? `Retorno teste: ${Number(activeModel.metrics.strategy_return ?? 0).toLocaleString("pt-BR", { style: "percent", maximumFractionDigits: 2 })}` : "Promova um candidato após revisar as métricas."}</p></div></div>
             <div className="model-list">{models.slice(0, 4).map((model) => <div key={model.id}><span>{model.algorithm.replaceAll("_", " ")}</span><b>{model.status}</b></div>)}</div>
           </article>
+        </section>
+
+        <section className="panel research-monitor" id="research">
+          <div className="panel-title"><div><p className="eyebrow">Pesquisa automatizada</p><h3>Próxima avaliação quantitativa</h3></div><span className={researchAutomation?.enabled ? "positive" : "muted"}>{researchAutomation?.enabled ? "Monitor ativo" : "Monitor desativado"}</span></div>
+          <p className="panel-explanation">Uma nova rodada só começa quando o período de teste estiver totalmente inédito. A promoção automática permanece {researchAutomation?.promote_qualified ? "habilitada" : "desabilitada"}.</p>
+          <div className="research-progress-grid">
+            {(researchAutomation?.markets ?? []).map((market) => <article className="research-progress-card" key={`${market.symbol}-${market.interval}`}>
+              <div><strong>{market.symbol}</strong><span>{market.interval} · horizonte {researchAutomation?.horizon ?? 4} candles</span></div>
+              <b>{market.available_new_candles} <small>/ {market.required_new_candles} candles</small></b>
+              <div className="progress-track" role="progressbar" aria-label={`Progresso de ${market.symbol}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(market.progress_percent)}><span style={{ width: `${market.progress_percent}%` }} /></div>
+              <footer><span>{market.missing_candles ? `Faltam ${market.missing_candles}` : "Janela pronta"}</span><time>{market.estimated_ready_at ? `Estimativa ${new Date(market.estimated_ready_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })}` : "Aguardando histórico"}</time></footer>
+            </article>)}
+          </div>
+          <div className="research-candidates"><div className="research-subtitle"><strong>Melhor candidato atual por mercado</strong><span>Retornos líquidos, com custos</span></div>
+            <div className="research-candidate-grid">{researchCandidates.map(({ market, model }) => <article key={market.symbol}>
+              <small>{market.symbol}</small><strong>{model?.algorithm.replaceAll("_", " ") ?? "Sem candidato"}</strong>
+              {model ? <dl><div><dt>Teste final</dt><dd className={Number(model.metrics.strategy_return ?? 0) >= 0 ? "positive" : "negative"}>{Number(model.metrics.strategy_return ?? 0).toLocaleString("pt-BR", { style: "percent", maximumFractionDigits: 2 })}</dd></div><div><dt>Walk-forward</dt><dd className={Number(model.metrics.walk_forward_return ?? 0) >= 0 ? "positive" : "negative"}>{Number(model.metrics.walk_forward_return ?? 0).toLocaleString("pt-BR", { style: "percent", maximumFractionDigits: 2 })}</dd></div><div><dt>Folds lucrativos</dt><dd>{model.metrics.walk_forward_profitable_folds ?? 0}/{model.metrics.walk_forward_folds ?? 0}</dd></div></dl> : <p>Aguardando modelos avaliados.</p>}
+            </article>)}</div>
+          </div>
         </section>
 
         <section className="panel backtests"><div className="panel-title"><div><p className="eyebrow">Validação</p><h3>Backtests recentes</h3></div><span>Custos e slippage incluídos</span></div><div className="backtest-grid">{backtests.length ? backtests.slice(0, 4).map((run) => <div className="backtest-item" key={run.id}><small>{run.symbol} · {run.strategy}</small><strong>{money(run.final_capital)}</strong><span>{run.metrics.trade_count ?? 0} operações · retorno {Number(run.metrics.return_percent ?? 0).toFixed(2)}%</span></div>) : <p className="empty">Execute um backtest para iniciar a comparação.</p>}</div></section>

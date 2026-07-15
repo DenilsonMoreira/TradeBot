@@ -23,6 +23,7 @@ from app.repositories.audit_repository import AuditRepository
 from app.services.audit_service import AuditService
 from app.repositories.notification_repository import NotificationRepository
 from app.services.notification_service import NotificationService
+from app.services.research_automation_service import ResearchAutomationService
 
 
 def get_candle_service(db: Session = Depends(get_db)) -> CandleService:
@@ -63,6 +64,20 @@ def get_ensemble_service(db: Session = Depends(get_db)) -> EnsembleService:
 
 def get_prediction_service(db: Session = Depends(get_db)) -> PredictionService:
     return PredictionService(ResearchRepository(db))
+
+
+def get_research_automation_service(
+    db: Session = Depends(get_db),
+) -> ResearchAutomationService:
+    candles = CandleRepository(db)
+    research = ResearchRepository(db)
+    return ResearchAutomationService(
+        candles,
+        research,
+        DatasetService(candles, research),
+        TrainingService(research, settings.model_artifact_dir),
+        ModelRegistry(research),
+    )
 
 
 def get_audit_service(db: Session = Depends(get_db)) -> AuditService:

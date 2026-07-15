@@ -194,6 +194,10 @@ RESEARCH_AUTOMATION_ENABLED=true
 RESEARCH_PROMOTE_QUALIFIED=false
 ```
 
+O painel **Pesquisa & IA** mostra esse progresso por símbolo, a estimativa para
+a próxima janela e o melhor candidato atual com resultados do teste final e do
+walk-forward.
+
 Não habilite `RESEARCH_PROMOTE_QUALIFIED` enquanto os modelos permanecerem sem
 validação lucrativa consistente.
 
