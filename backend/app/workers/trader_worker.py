@@ -12,6 +12,7 @@ from app.services.trading_service import (
     execute_market_buy,
     execute_market_sell,
 )
+from app.services.soak_service import TestnetSoakService
 from app.strategy import calculate_ema_rsi_signal
 
 logging.basicConfig(
@@ -245,6 +246,15 @@ async def run_worker() -> None:
     while True:
         try:
             mode = get_mode()
+
+            with SessionLocal() as db:
+                completed_campaign = TestnetSoakService(db).complete_if_due()
+                if completed_campaign is not None:
+                    logger.warning(
+                        "Campanha Testnet contínua #%s encerrada com status %s.",
+                        completed_campaign.id,
+                        completed_campaign.status,
+                    )
 
             if mode == BotMode.OFF:
                 logger.info("Bot OFF. Aguardando próxima verificação.")

@@ -38,6 +38,7 @@ from app.api.routes.audit import router as audit_router
 from app.core.security import OperatorSession
 from app.services.audit_service import AuditService
 from app.api.routes.notifications import router as notifications_router
+from app.api.routes.soak import router as soak_router
 from app.services.notification_service import NotificationService
 
 
@@ -93,6 +94,7 @@ app.include_router(research_router)
 app.include_router(auth_router)
 app.include_router(audit_router)
 app.include_router(notifications_router)
+app.include_router(soak_router)
 
 binance = BinanceTestnetClient()
 

@@ -13,6 +13,7 @@ from app.models import (
     PositionStatus,
     TradingRiskSettings
 )
+from app.services.soak_service import validate_active_soak_limits
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,10 @@ async def execute_market_buy(
 
     if has_open_position(db, symbol):
         raise ValueError(f"Já existe uma posição aberta para {symbol}.")
+
+    allowed, reason = validate_active_soak_limits(db, quote_amount)
+    if not allowed:
+        raise ValueError(reason)
 
     order = Order(
         symbol=symbol,
@@ -231,6 +236,13 @@ def can_open_automatic_position(
 
     if not settings.auto_entry_enabled:
         return False, "Entrada automática está desativada."
+
+    allowed, reason = validate_active_soak_limits(
+        db,
+        settings.max_quote_amount_per_trade,
+    )
+    if not allowed:
+        return False, reason
 
     open_positions = db.scalar(
         select(func.count(Position.id)).where(

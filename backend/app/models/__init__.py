@@ -9,3 +9,4 @@ from .research import BacktestRun, DatasetArtifact, ResearchEvaluationRun, Train
 from .prediction import Prediction
 from .audit import AuditEvent
 from .notification import Notification
+from .soak import TestnetSoakCampaign

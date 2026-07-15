@@ -22,6 +22,10 @@ type Notification = { id: number; severity: string; category: string; title: str
 type ResearchMarketStatus = { symbol: string; interval: string; due: boolean; available_new_candles: number; required_new_candles: number; missing_candles: number; progress_percent: number; last_evaluated_at: string | null; estimated_ready_at: string | null; dataset_id: number | null };
 type ResearchAutomationStatus = { enabled: boolean; promote_qualified: boolean; evaluation_interval_seconds: number; dataset_limit: number; horizon: number; markets: ResearchMarketStatus[] };
 type ResearchEvaluation = { id: number; symbol: string; interval: string; dataset_id: number | null; status: string; new_candles: number; required_candles: number; models_trained: number; recommended_algorithm: string | null; activated_algorithm: string | null; metrics_summary: Record<string, unknown>; error_message: string | null; started_at: string; completed_at: string | null };
+type SoakCampaign = { id: number; status: string; budget_brl: number; reference_brl_per_usdt: number; budget_quote: number; max_quote_per_trade: number; max_loss_quote: number; duration_hours: number; symbols: string[]; started_at: string; ends_at: string; completed_at: string | null };
+type SoakCandleMetric = { collected: number; expected: number; coverage_percent: number; latest_close_time: string | null; fresh: boolean };
+type SoakMetrics = { elapsed_percent: number; remaining_hours: number; candles: Record<string, SoakCandleMetric>; signal_count: number; order_count: number; rejected_orders: number; realized_pnl_quote: number; open_exposure_quote: number; checks: Record<string, boolean>; approved: boolean };
+type SoakStatus = { campaign: SoakCampaign | null; metrics: SoakMetrics | null };
 
 let csrfToken = "";
 
@@ -59,6 +63,10 @@ function money(value: number | string | null | undefined) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "USD" }).format(number);
 }
 
+function brl(value: number | string | null | undefined) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(value ?? 0));
+}
+
 export default function Home() {
   const [status, setStatus] = useState<BotStatus | null>(null);
   const [positions, setPositions] = useState<Position[]>([]);
@@ -86,6 +94,7 @@ export default function Home() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [researchAutomation, setResearchAutomation] = useState<ResearchAutomationStatus | null>(null);
   const [researchEvaluations, setResearchEvaluations] = useState<ResearchEvaluation[]>([]);
+  const [soakStatus, setSoakStatus] = useState<SoakStatus | null>(null);
   const [activeSection, setActiveSection] = useState("overview");
 
   const loadMarket = useCallback(async (symbols: string[], interval: string) => {
@@ -111,7 +120,7 @@ export default function Home() {
     setBusy(true);
     setError("");
     try {
-      const [nextStatus, nextPositions, nextMarketConfig, nextModels, nextBacktests, nextRisk, nextSignals, nextOrders, nextAuditEvents, nextNotifications, nextResearchAutomation, nextResearchEvaluations] = await Promise.all([
+      const [nextStatus, nextPositions, nextMarketConfig, nextModels, nextBacktests, nextRisk, nextSignals, nextOrders, nextAuditEvents, nextNotifications, nextResearchAutomation, nextResearchEvaluations, nextSoakStatus] = await Promise.all([
         request<BotStatus>("/bot/status"),
         request<Position[]>("/positions?limit=20"),
         request<MarketConfig>("/candles/config"),
@@ -124,6 +133,7 @@ export default function Home() {
         request<Notification[]>("/notifications?limit=12"),
         request<ResearchAutomationStatus>("/research/automation/status"),
         request<ResearchEvaluation[]>("/research/evaluations?limit=12"),
+        request<SoakStatus>("/testnet/soak"),
       ]);
       setStatus(nextStatus);
       setPositions(nextPositions);
@@ -139,6 +149,7 @@ export default function Home() {
       setNotifications(nextNotifications);
       setResearchAutomation(nextResearchAutomation);
       setResearchEvaluations(nextResearchEvaluations);
+      setSoakStatus(nextSoakStatus);
       void request<Account>("/account/balance").then(setAccount).catch(() => setAccount(null));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível carregar o painel");
@@ -180,7 +191,7 @@ export default function Home() {
   }, [loginRetrySeconds]);
 
   useEffect(() => {
-    const sectionIds = ["overview", "market", "operations", "orders", "positions", "notifications", "audit", "research"];
+    const sectionIds = ["overview", "soak", "market", "operations", "orders", "positions", "notifications", "audit", "research"];
     const selectHashSection = () => {
       const section = window.location.hash.slice(1);
       if (sectionIds.includes(section)) setActiveSection(section);
@@ -272,6 +283,11 @@ export default function Home() {
     await runOperation("Venda Testnet", () => request("/trading/manual-sell", { method: "POST", body: JSON.stringify({ confirmation: "VENDER BTC TESTNET" }) }));
   };
 
+  const startSoakCampaign = async () => {
+    if (!await confirmAction("Iniciar teste contínuo de R$ 500?", "Serão 7 dias de observação na Testnet, com teto de 6 USDT por compra e sem ativar entradas automáticas.", "Iniciar teste")) return;
+    await runOperation("Campanha Testnet", () => request("/testnet/soak/start", { method: "POST", body: JSON.stringify({ confirmation: "INICIAR TESTE R$ 500", duration_hours: 168 }) }));
+  };
+
   const markNotificationRead = async (id: number) => {
     await request(`/notifications/${id}/read`, { method: "POST" });
     setNotifications((current) => current.map((item) => item.id === id ? { ...item, read_at: new Date().toISOString() } : item));
@@ -328,7 +344,7 @@ export default function Home() {
       <aside className="sidebar">
         <div className="brand"><span className="brand-mark">TB</span><div><strong>TradeBrain</strong><small>Quantitative desk</small></div></div>
         <nav aria-label="Navegação principal">
-          {[{ id: "overview", label: "Visão geral" }, { id: "market", label: "Mercado" }, { id: "operations", label: "Operação" }, { id: "orders", label: "Compras e vendas" }, { id: "positions", label: "Posições" }, { id: "notifications", label: "Notificações" }, { id: "audit", label: "Auditoria" }, { id: "research", label: "Pesquisa & IA" }].map((item) => <a key={item.id} className={activeSection === item.id ? "active" : ""} href={`#${item.id}`} aria-current={activeSection === item.id ? "page" : undefined} onClick={() => setActiveSection(item.id)}>{item.label}</a>)}
+          {[{ id: "overview", label: "Visão geral" }, { id: "soak", label: "Teste R$ 500" }, { id: "market", label: "Mercado" }, { id: "operations", label: "Operação" }, { id: "orders", label: "Compras e vendas" }, { id: "positions", label: "Posições" }, { id: "notifications", label: "Notificações" }, { id: "audit", label: "Auditoria" }, { id: "research", label: "Pesquisa & IA" }].map((item) => <a key={item.id} className={activeSection === item.id ? "active" : ""} href={`#${item.id}`} aria-current={activeSection === item.id ? "page" : undefined} onClick={() => setActiveSection(item.id)}>{item.label}</a>)}
         </nav>
         <div className="sidebar-foot"><span className={`pulse ${error ? "danger" : ""}`} />{error ? "API desconectada" : "Binance Testnet"}</div>
       </aside>
@@ -348,6 +364,31 @@ export default function Home() {
             <div><dt>Modelo</dt><dd>{activeModel?.algorithm.replaceAll("_", " ") ?? "—"}</dd></div>
           </dl>
           <button className="summary-refresh" onClick={() => void Promise.all([load(), loadMarket(marketConfig.symbols, selectedInterval)])} disabled={busy || marketUpdating} aria-label="Atualizar dados do painel">{busy || marketUpdating ? "Atualizando…" : "Atualizar agora"}</button>
+        </section>
+
+        <section className="panel soak-panel" id="soak">
+          <div className="panel-title"><div><p className="eyebrow">Validação operacional contínua</p><h3>Campanha Testnet · referência de R$ 500</h3></div><span className={soakStatus?.campaign?.status === "RUNNING" ? "positive" : "muted"}>{soakStatus?.campaign?.status === "RUNNING" ? "Em observação" : soakStatus?.campaign ? soakStatus.campaign.status : "Não iniciada"}</span></div>
+          {!soakStatus?.campaign || !soakStatus.metrics ? <div className="soak-empty"><p>Nenhuma campanha foi iniciada. O teste acompanha dados, sinais e limites por 7 dias sem habilitar compras automáticas.</p><button onClick={() => void startSoakCampaign()} disabled={busy}>Iniciar teste seguro</button></div> : <>
+            <p className="panel-explanation">O orçamento é uma referência experimental: {brl(soakStatus.campaign.budget_brl)} ÷ R$ {soakStatus.campaign.reference_brl_per_usdt.toFixed(2)}/USDT = {money(soakStatus.campaign.budget_quote)}. Não é uma cotação cambial ao vivo e não representa dinheiro real.</p>
+            <div className="soak-summary">
+              <div><small>Período</small><strong>{new Date(soakStatus.campaign.started_at).toLocaleString("pt-BR")} → {new Date(soakStatus.campaign.ends_at).toLocaleString("pt-BR")}</strong></div>
+              <div><small>Progresso temporal</small><strong>{soakStatus.metrics.elapsed_percent.toFixed(2)}%</strong><span>{soakStatus.metrics.remaining_hours.toFixed(1)} h restantes</span></div>
+              <div><small>Limites adicionais</small><strong>{money(soakStatus.campaign.max_quote_per_trade)} / compra</strong><span>perda máxima {money(soakStatus.campaign.max_loss_quote)}</span></div>
+              <div><small>Atividade observada</small><strong>{soakStatus.metrics.signal_count} sinais · {soakStatus.metrics.order_count} ordens</strong><span>P&amp;L {money(soakStatus.metrics.realized_pnl_quote)} · exposição {money(soakStatus.metrics.open_exposure_quote)}</span></div>
+            </div>
+            <div className="progress-track soak-progress"><span style={{ width: `${soakStatus.metrics.elapsed_percent}%` }} /></div>
+            <div className="soak-candles">{Object.entries(soakStatus.metrics.candles).map(([symbol, metric]) => <article key={symbol}><div><strong>{symbol}</strong><span className={metric.fresh ? "positive" : "negative"}>{metric.fresh ? "Feed atual" : "Feed atrasado"}</span></div><b>{metric.collected} <small>/ {metric.expected} candles 15m</small></b><div className="progress-track"><span style={{ width: `${metric.coverage_percent}%` }} /></div><small>{metric.coverage_percent.toFixed(2)}% da meta · último fechamento {metric.latest_close_time ? new Date(metric.latest_close_time).toLocaleString("pt-BR") : "indisponível"}</small></article>)}</div>
+            <div className="soak-checks">{[
+              ["automatic_entries_disabled", "Entrada automática continua desativada"],
+              ["order_limits_respected", "Ordens respeitam 6 USDT"],
+              ["exposure_within_budget", "Exposição dentro do orçamento"],
+              ["loss_within_limit", "Perda dentro do limite"],
+              ["no_rejected_orders", "Nenhuma ordem rejeitada"],
+              ["feeds_fresh", "Feeds dos três mercados atuais"],
+              ["candle_coverage", "Cobertura mínima de 95%"],
+              ["duration_complete", "Sete dias concluídos"],
+            ].map(([key, label]) => <span key={key} className={soakStatus.metrics!.checks[key] ? "passed" : "pending"}>{soakStatus.metrics!.checks[key] ? "✓" : "○"} {label}</span>)}</div>
+          </>}
         </section>
 
         <section className="operations-grid" id="operations">

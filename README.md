@@ -228,6 +228,27 @@ GET  /datasets/{dataset_id}/predictions
 Uma previsão nunca cria ordem diretamente. Qualquer uso operacional futuro
 deve passar pelo gestor de risco e pelo serviço de execução.
 
+## Campanha contínua Testnet de R$ 500
+
+O painel acompanha uma campanha observacional de sete dias com referência fixa
+de R$ 5,00 por USDT: R$ 500 equivalem a 100 USDT apenas para dimensionamento do
+experimento. Essa referência não é uma cotação cambial ao vivo.
+
+Durante a campanha, o serviço de execução aplica limites adicionais a compras
+manuais e automáticas: máximo de 6 USDT por compra, exposição de até 100 USDT e
+perda acumulada máxima de 5 USDT. O início é recusado se a entrada automática
+estiver habilitada e não altera o modo do bot.
+
+```text
+GET  /testnet/soak
+POST /testnet/soak/start
+```
+
+O resultado só é aprovado após sete dias, cobertura mínima de 95% dos candles
+fechados de 15 minutos nos três mercados, feeds atuais, ausência de ordens
+rejeitadas e respeito a todos os limites. A confirmação para iniciar é
+`INICIAR TESTE R$ 500`.
+
 ## Testes
 
 Execute a suíte completa em um PostgreSQL temporário e isolado. O banco local da
