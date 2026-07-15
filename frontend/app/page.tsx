@@ -27,6 +27,8 @@ type SoakCandleMetric = { collected: number; expected: number; coverage_percent:
 type SoakMonitoring = { active_alerts?: string[]; last_checked_at?: string; alert_history?: { check: string; state: string; occurred_at: string }[] };
 type SoakMetrics = { elapsed_percent: number; remaining_hours: number; candles: Record<string, SoakCandleMetric>; signal_count: number; order_count: number; rejected_orders: number; realized_pnl_quote: number; open_exposure_quote: number; checks: Record<string, boolean>; approved: boolean; monitoring?: SoakMonitoring };
 type SoakStatus = { campaign: SoakCampaign | null; metrics: SoakMetrics | null };
+type ReadinessCheck = { id: string; label: string; status: "PASS" | "PENDING" | "FAIL"; detail: string; gates: string[] };
+type ReadinessReport = { generated_at: string; environment: string; local_stack_ready: boolean; server_release_ready: boolean; automatic_trading_ready: boolean; summary: { passed: number; pending: number; failed: number; total: number }; checks: ReadinessCheck[] };
 
 let csrfToken = "";
 
@@ -96,6 +98,7 @@ export default function Home() {
   const [researchAutomation, setResearchAutomation] = useState<ResearchAutomationStatus | null>(null);
   const [researchEvaluations, setResearchEvaluations] = useState<ResearchEvaluation[]>([]);
   const [soakStatus, setSoakStatus] = useState<SoakStatus | null>(null);
+  const [readiness, setReadiness] = useState<ReadinessReport | null>(null);
   const [activeSection, setActiveSection] = useState("overview");
 
   const loadMarket = useCallback(async (symbols: string[], interval: string) => {
@@ -121,7 +124,7 @@ export default function Home() {
     setBusy(true);
     setError("");
     try {
-      const [nextStatus, nextPositions, nextMarketConfig, nextModels, nextBacktests, nextRisk, nextSignals, nextOrders, nextAuditEvents, nextNotifications, nextResearchAutomation, nextResearchEvaluations, nextSoakStatus] = await Promise.all([
+      const [nextStatus, nextPositions, nextMarketConfig, nextModels, nextBacktests, nextRisk, nextSignals, nextOrders, nextAuditEvents, nextNotifications, nextResearchAutomation, nextResearchEvaluations, nextSoakStatus, nextReadiness] = await Promise.all([
         request<BotStatus>("/bot/status"),
         request<Position[]>("/positions?limit=20"),
         request<MarketConfig>("/candles/config"),
@@ -135,6 +138,7 @@ export default function Home() {
         request<ResearchAutomationStatus>("/research/automation/status"),
         request<ResearchEvaluation[]>("/research/evaluations?limit=12"),
         request<SoakStatus>("/testnet/soak"),
+        request<ReadinessReport>("/readiness/report"),
       ]);
       setStatus(nextStatus);
       setPositions(nextPositions);
@@ -151,6 +155,7 @@ export default function Home() {
       setResearchAutomation(nextResearchAutomation);
       setResearchEvaluations(nextResearchEvaluations);
       setSoakStatus(nextSoakStatus);
+      setReadiness(nextReadiness);
       void request<Account>("/account/balance").then(setAccount).catch(() => setAccount(null));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível carregar o painel");
@@ -192,7 +197,7 @@ export default function Home() {
   }, [loginRetrySeconds]);
 
   useEffect(() => {
-    const sectionIds = ["overview", "soak", "market", "operations", "orders", "positions", "notifications", "audit", "research"];
+    const sectionIds = ["overview", "soak", "readiness", "market", "operations", "orders", "positions", "notifications", "audit", "research"];
     const selectHashSection = () => {
       const section = window.location.hash.slice(1);
       if (sectionIds.includes(section)) setActiveSection(section);
@@ -345,7 +350,7 @@ export default function Home() {
       <aside className="sidebar">
         <div className="brand"><span className="brand-mark">TB</span><div><strong>TradeBrain</strong><small>Quantitative desk</small></div></div>
         <nav aria-label="Navegação principal">
-          {[{ id: "overview", label: "Visão geral" }, { id: "soak", label: "Teste R$ 500" }, { id: "market", label: "Mercado" }, { id: "operations", label: "Operação" }, { id: "orders", label: "Compras e vendas" }, { id: "positions", label: "Posições" }, { id: "notifications", label: "Notificações" }, { id: "audit", label: "Auditoria" }, { id: "research", label: "Pesquisa & IA" }].map((item) => <a key={item.id} className={activeSection === item.id ? "active" : ""} href={`#${item.id}`} aria-current={activeSection === item.id ? "page" : undefined} onClick={() => setActiveSection(item.id)}>{item.label}</a>)}
+          {[{ id: "overview", label: "Visão geral" }, { id: "soak", label: "Teste R$ 500" }, { id: "readiness", label: "Prontidão" }, { id: "market", label: "Mercado" }, { id: "operations", label: "Operação" }, { id: "orders", label: "Compras e vendas" }, { id: "positions", label: "Posições" }, { id: "notifications", label: "Notificações" }, { id: "audit", label: "Auditoria" }, { id: "research", label: "Pesquisa & IA" }].map((item) => <a key={item.id} className={activeSection === item.id ? "active" : ""} href={`#${item.id}`} aria-current={activeSection === item.id ? "page" : undefined} onClick={() => setActiveSection(item.id)}>{item.label}</a>)}
         </nav>
         <div className="sidebar-foot"><span className={`pulse ${error ? "danger" : ""}`} />{error ? "API desconectada" : "Binance Testnet"}</div>
       </aside>
@@ -390,6 +395,20 @@ export default function Home() {
               ["candle_coverage", "Cobertura mínima de 95%"],
               ["duration_complete", "Sete dias concluídos"],
             ].map(([key, label]) => <span key={key} className={soakStatus.metrics!.checks[key] ? "passed" : "pending"}>{soakStatus.metrics!.checks[key] ? "✓" : "○"} {label}</span>)}</div>
+          </>}
+        </section>
+
+        <section className="panel readiness-panel" id="readiness">
+          <div className="panel-title"><div><p className="eyebrow">Auditoria de liberação</p><h3>Prontidão operacional</h3></div><span>{readiness ? `${readiness.summary.passed}/${readiness.summary.total} critérios aprovados` : "Carregando"}</span></div>
+          <p className="panel-explanation">Os três níveis são independentes: o Docker local pode estar saudável enquanto a liberação para servidor ou o trading automático continuam bloqueados por dados ainda incompletos.</p>
+          {readiness && <>
+            <div className="readiness-gates">
+              <article className={readiness.local_stack_ready ? "ready" : "blocked"}><small>Docker local</small><strong>{readiness.local_stack_ready ? "PRONTO" : "BLOQUEADO"}</strong><span>Infraestrutura, segurança e ciclo Testnet</span></article>
+              <article className={readiness.server_release_ready ? "ready" : "blocked"}><small>Servidor Testnet</small><strong>{readiness.server_release_ready ? "PRONTO" : "AGUARDANDO"}</strong><span>Exige campanha de sete dias aprovada</span></article>
+              <article className={readiness.automatic_trading_ready ? "ready" : "blocked"}><small>Trading automático</small><strong>{readiness.automatic_trading_ready ? "PRONTO" : "PROIBIDO"}</strong><span>Exige campanha e modelo ativo aprovado</span></article>
+            </div>
+            <div className="readiness-summary"><span className="passed">{readiness.summary.passed} aprovados</span><span className="pending">{readiness.summary.pending} pendentes</span><span className="failed">{readiness.summary.failed} falhas</span><time dateTime={readiness.generated_at}>Auditado em {new Date(readiness.generated_at).toLocaleString("pt-BR")}</time></div>
+            <div className="readiness-checks">{readiness.checks.map((check) => <article key={check.id} className={check.status.toLowerCase()}><span>{check.status === "PASS" ? "✓" : check.status === "PENDING" ? "○" : "!"}</span><div><strong>{check.label}</strong><p>{check.detail}</p><small>Bloqueia: {check.gates.map((gate) => gate === "LOCAL" ? "Docker" : gate === "SERVER" ? "Servidor" : "Automático").join(" · ")}</small></div></article>)}</div>
           </>}
         </section>
 

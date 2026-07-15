@@ -67,6 +67,9 @@ test("keeps authentication and production metadata in the web application", asyn
   assert.match(page, /Entrada automática continua desativada/);
   assert.match(page, /Monitor de segurança normal/);
   assert.match(page, /Entrada automática bloqueada durante o teste contínuo/);
+  assert.match(page, /\/readiness\/report/);
+  assert.match(page, /Prontidão operacional/);
+  assert.match(page, /Trading automático/);
   assert.match(page, /addEventListener\("hashchange", selectHashSection\)/);
   assert.match(page, /aria-current=\{activeSection === item\.id \? "page" : undefined\}/);
   assert.match(layout, /title:\s*"TradeBrain · Quantitative Trading Desk"/);

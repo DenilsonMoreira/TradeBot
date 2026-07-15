@@ -26,7 +26,7 @@ try {
         throw "A configuração do Docker Compose é inválida."
     }
 
-    $expectedServices = @("proxy", "frontend", "api", "worker", "candle-worker", "indicator-worker", "db")
+    $expectedServices = @("proxy", "frontend", "api", "worker", "candle-worker", "indicator-worker", "trainer-worker", "db")
     $runningServices = @(docker compose --env-file $EnvironmentFile -f docker-compose.prod.yml ps --status running --services)
     if ($LASTEXITCODE -ne 0) {
         throw "Não foi possível consultar os serviços de produção."
@@ -46,9 +46,30 @@ try {
         throw "O painel respondeu com HTTP $($web.StatusCode)."
     }
 
+    $python = @'
+import json
+from app.database import SessionLocal
+from app.services.readiness_service import ReadinessService
+db = SessionLocal()
+try:
+    print(json.dumps(ReadinessService(db).report(), default=str))
+finally:
+    db.close()
+'@
+    $reportOutput = @(docker compose --env-file $EnvironmentFile -f docker-compose.prod.yml exec -T api python -c $python)
+    if ($LASTEXITCODE -ne 0) {
+        throw "Não foi possível consultar a prontidão interna da produção."
+    }
+    $report = ($reportOutput -join "`n") | ConvertFrom-Json
+    if (-not $report.server_release_ready) {
+        $blocked = @($report.checks | Where-Object { "SERVER" -in $_.gates -and $_.status -ne "PASS" })
+        throw "Servidor ainda bloqueado: $(($blocked | ForEach-Object { $_.label }) -join '; ')."
+    }
+
     Write-Host "Produção saudável: https://$domain"
     Write-Host "Serviços em execução: $($runningServices -join ', ')"
     Write-Host "API pronta e PostgreSQL conectado."
+    Write-Host "Gate interno de servidor aprovado."
 }
 finally {
     Remove-Item Env:TRADEBRAIN_ENV_FILE -ErrorAction SilentlyContinue

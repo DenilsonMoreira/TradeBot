@@ -253,6 +253,30 @@ rejeitadas e respeito a todos os limites. A confirmação para iniciar é
 alertas e recuperações sem duplicação e notifica o operador quando o teste é
 encerrado automaticamente.
 
+## Prontidão para servidor
+
+O painel separa a saúde do Docker local, a liberação para servidor Testnet e a
+autorização de trading automático. Consulte o mesmo relatório pela API:
+
+```text
+GET /readiness/report
+```
+
+Execute a auditoria local com verificação de backup:
+
+```powershell
+.\deploy\check-local-readiness.ps1 -ValidateBackup
+```
+
+O deploy exige confirmação explícita e mantém obrigatoriamente Testnet, cookie
+seguro e promoção automática de modelos desabilitada:
+
+```powershell
+.\deploy\deploy-production.ps1 -Confirmation "PUBLICAR TESTNET"
+```
+
+Consulte `docs/PRODUCTION_READINESS.md` e `ROADMAP.md` para os gates atuais.
+
 ## Testes
 
 Execute a suíte completa em um PostgreSQL temporário e isolado. O banco local da
