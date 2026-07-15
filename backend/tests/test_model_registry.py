@@ -32,3 +32,30 @@ def test_missing_model_rolls_back() -> None:
         ModelRegistry(repository).promote(999)
 
     repository.session.rollback.assert_called_once_with()
+
+
+def test_recommendation_requires_walk_forward_stability() -> None:
+    repository = Mock()
+    repository.get_models_for_dataset.return_value = [
+        Mock(
+            algorithm="random_forest",
+            status="CANDIDATE",
+            metrics={
+                "strategy_return": 0.10,
+                "f1": 0.7,
+                "roc_auc": 0.8,
+                "trade_count": 30,
+                "buy_and_hold_return": 0.01,
+                "walk_forward_return": -0.02,
+                "walk_forward_profitable_folds": 1,
+            },
+        )
+    ]
+
+    result = ModelRegistry(repository).recommend(
+        10,
+        min_walk_forward_return=0.0,
+        min_profitable_folds=2,
+    )
+
+    assert result is None

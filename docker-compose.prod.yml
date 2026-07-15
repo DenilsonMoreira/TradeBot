@@ -120,6 +120,25 @@ services:
       candle-worker:
         condition: service_started
 
+  trainer-worker:
+    logging: *default-logging
+    build:
+      context: ./backend
+    container_name: tradebot-trainer-worker
+    restart: unless-stopped
+    env_file:
+      - ${TRADEBRAIN_ENV_FILE:-.env.production}
+    environment:
+      TZ: America/Fortaleza
+    command: python -m app.workers.trainer_worker
+    volumes:
+      - model_artifacts:/app/artifacts
+    depends_on:
+      api:
+        condition: service_healthy
+      candle-worker:
+        condition: service_started
+
   db:
     logging: *default-logging
     image: postgres:16-alpine

@@ -106,6 +106,8 @@ def recommend_model(
     min_f1: float = Query(default=0.0, ge=0, le=1),
     min_roc_auc: float = Query(default=0.0, ge=0, le=1),
     min_trade_count: int = Query(default=0, ge=0),
+    min_walk_forward_return: float = Query(default=0.0),
+    min_profitable_folds: int = Query(default=0, ge=0),
     require_outperform_buy_hold: bool = Query(default=False),
     registry: ModelRegistry = Depends(get_model_registry),
 ):
@@ -115,6 +117,8 @@ def recommend_model(
         min_f1=min_f1,
         min_roc_auc=min_roc_auc,
         min_trade_count=min_trade_count,
+        min_walk_forward_return=min_walk_forward_return,
+        min_profitable_folds=min_profitable_folds,
         require_outperform_buy_hold=require_outperform_buy_hold,
     )
 

@@ -89,6 +89,26 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  trainer-worker:
+    build:
+      context: ./backend
+    container_name: tradebot-trainer-worker
+    env_file:
+      - .env
+    environment:
+      TZ: America/Fortaleza
+      RESEARCH_AUTOMATION_ENABLED: "true"
+    command: python -m app.workers.trainer_worker
+    volumes:
+      - ./backend/app:/app/app
+      - model_artifacts:/app/artifacts
+    depends_on:
+      api:
+        condition: service_healthy
+      candle-worker:
+        condition: service_started
+    restart: unless-stopped
+
   db:
     image: postgres:16-alpine
     container_name: tradebot-db

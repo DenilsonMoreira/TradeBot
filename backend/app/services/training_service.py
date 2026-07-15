@@ -10,7 +10,7 @@ EXPECTED_ALGORITHMS = {
     "lightgbm",
     "catboost",
 }
-MODEL_VERSION = "model-v3-calibrated"
+MODEL_VERSION = "model-v4-walk-forward-purged"
 
 
 class TrainingService:

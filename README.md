@@ -167,8 +167,10 @@ XGBoost CPU, LightGBM e CatBoost.
 
 O pipeline local executa backtest, divisão temporal, treinamento e promoção
 condicional. Por padrão, a promoção exige F1 mínimo de 0,50, ROC-AUC mínimo de
-0,55, pelo menos 20 operações e retorno superior ao buy-and-hold. O limiar de
-probabilidade é calibrado somente em uma janela de validação anterior ao teste:
+0,55, pelo menos 20 operações, retorno superior ao buy-and-hold e estabilidade
+em pelo menos dois de três folds walk-forward. O limiar de probabilidade é
+calibrado somente em janelas anteriores ao respectivo teste, e os 20% finais
+do dataset permanecem intocados até a avaliação final:
 
 ```powershell
 docker compose run --rm api python scripts/run_research_pipeline.py --symbols BTCUSDT ETHUSDT BNBUSDT --limit 3000 --promote-qualified
@@ -180,6 +182,20 @@ backtest e da criação do dataset.
 O relatório mais recente está em
 `backend/docs/model-evaluation-2026-07.md`. Nenhum candidato atual cumpriu os
 critérios de promoção, portanto o registro permanece sem modelo ativo.
+
+O `trainer-worker` verifica os dados uma vez por hora. Uma nova rodada só é
+executada quando houver uma janela final completamente inédita: com 3.900
+candles e horizonte de uma hora, são exigidos 778 candles posteriores ao
+último dataset. No Docker local o monitor fica ativo; promoção automática
+continua desabilitada. Em produção, habilite explicitamente:
+
+```text
+RESEARCH_AUTOMATION_ENABLED=true
+RESEARCH_PROMOTE_QUALIFIED=false
+```
+
+Não habilite `RESEARCH_PROMOTE_QUALIFIED` enquanto os modelos permanecerem sem
+validação lucrativa consistente.
 
 Ensembles podem ser avaliados sem promoção automática:
 

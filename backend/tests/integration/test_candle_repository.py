@@ -64,6 +64,13 @@ def test_save_many_and_history_queries(repository: CandleRepository) -> None:
         start + timedelta(minutes=2)
     )
     assert repository.exists("btcusdt", "1m", start) is True
+    assert repository.count_after("BTCUSDT", "1m", start) == 1
+    assert repository.count_after(
+        "BTCUSDT",
+        "1m",
+        start,
+        closed_only=False,
+    ) == 2
 
 
 def test_upsert_many_is_idempotent_and_updates_open_candle(

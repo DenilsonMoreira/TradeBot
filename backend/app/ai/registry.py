@@ -55,6 +55,8 @@ class ModelRegistry:
         min_f1: float = 0.0,
         min_roc_auc: float = 0.0,
         min_trade_count: int = 0,
+        min_walk_forward_return: float = 0.0,
+        min_profitable_folds: int = 0,
         require_outperform_buy_hold: bool = False,
     ) -> TrainedModel | None:
         candidates = []
@@ -63,25 +65,40 @@ class ModelRegistry:
                 continue
             strategy_return = float(model.metrics.get("strategy_return", 0))
             f1 = float(model.metrics.get("f1", 0))
-            roc_auc = float(model.metrics.get("roc_auc", 0))
+            roc_auc = float(model.metrics.get("roc_auc") or 0)
             buy_and_hold = float(model.metrics.get("buy_and_hold_return", 0))
             trade_count = int(model.metrics.get("trade_count", 0))
+            walk_forward_return = float(
+                model.metrics.get("walk_forward_return", 0)
+            )
+            profitable_folds = int(
+                model.metrics.get("walk_forward_profitable_folds", 0)
+            )
             if (
                 strategy_return >= min_strategy_return
                 and f1 >= min_f1
                 and roc_auc >= min_roc_auc
                 and trade_count >= min_trade_count
+                and walk_forward_return >= min_walk_forward_return
+                and profitable_folds >= min_profitable_folds
                 and (
                     not require_outperform_buy_hold
                     or strategy_return > buy_and_hold
                 )
             ):
                 candidates.append(
-                    (strategy_return, f1, roc_auc, trade_count, model)
+                    (
+                        walk_forward_return,
+                        strategy_return,
+                        f1,
+                        roc_auc,
+                        trade_count,
+                        model,
+                    )
                 )
         if not candidates:
             return None
         return max(
             candidates,
             key=lambda item: (item[0], item[1], item[2], item[3]),
-        )[4]
+        )[5]

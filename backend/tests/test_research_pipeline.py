@@ -6,6 +6,10 @@ import pytest
 from app.ai.datasets.builder import FEATURE_NAMES, build_rows, validate_candle_continuity
 from app.ai.evaluator import evaluate_predictions
 from app.ai.trainer import select_threshold, train_candidates
+from app.ai.walk_forward import (
+    aggregate_walk_forward_metrics,
+    build_walk_forward_splits,
+)
 from app.backtest.engine import BacktestConfig, run_ema_cross_backtest
 from app.models.candle import Candle
 
@@ -95,6 +99,7 @@ def test_training_compares_baseline_and_models(tmp_path):
         "catboost",
     }
     assert all("strategy_return" in metrics for _, metrics, _ in results)
+    assert all(metrics["walk_forward_folds"] == 3 for _, metrics, _ in results)
     assert all((tmp_path / f"test-dataset-{name}.joblib").exists() for name, _, _ in results)
 
 
@@ -113,3 +118,23 @@ def test_training_can_select_only_missing_algorithms(tmp_path):
         "lightgbm",
         "catboost",
     }
+
+
+def test_walk_forward_splits_are_expanding_and_non_overlapping():
+    splits = build_walk_forward_splits(100)
+
+    assert splits == [(50, 66), (66, 82), (82, 100)]
+    assert all(first[1] == second[0] for first, second in zip(splits, splits[1:]))
+
+
+def test_walk_forward_metrics_compound_sequential_fold_returns():
+    metrics = aggregate_walk_forward_metrics([
+        {"strategy_return": 0.1, "f1": 0.6, "roc_auc": 0.7, "trade_count": 3},
+        {"strategy_return": -0.05, "f1": 0.4, "roc_auc": None, "trade_count": 2},
+        {"strategy_return": 0.02, "f1": 0.5, "roc_auc": 0.6, "trade_count": 4},
+    ])
+
+    assert metrics["walk_forward_return"] == pytest.approx(1.1 * 0.95 * 1.02 - 1)
+    assert metrics["walk_forward_profitable_folds"] == 2
+    assert metrics["walk_forward_trade_count"] == 9
+    assert metrics["walk_forward_worst_fold_return"] == -0.05

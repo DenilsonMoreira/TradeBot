@@ -28,6 +28,29 @@ class ResearchRepository:
             select(DatasetArtifact).where(DatasetArtifact.version == version)
         )
 
+    def get_latest_dataset(
+        self,
+        symbol: str,
+        interval: str,
+        horizon: int,
+    ):
+        datasets = self.session.scalars(
+            select(DatasetArtifact)
+            .where(
+                DatasetArtifact.symbol == symbol.upper(),
+                DatasetArtifact.interval == interval,
+            )
+            .order_by(DatasetArtifact.created_at.desc(), DatasetArtifact.id.desc())
+        ).all()
+        return next(
+            (
+                dataset
+                for dataset in datasets
+                if int(dataset.metadata_json.get("horizon", 1)) == horizon
+            ),
+            None,
+        )
+
     def list_models(self, limit: int = 50):
         return self.session.scalars(select(TrainedModel).order_by(TrainedModel.created_at.desc()).limit(limit)).all()
 

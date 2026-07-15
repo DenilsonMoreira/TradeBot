@@ -134,6 +134,23 @@ class CandleRepository:
         )
         return int(self.session.scalar(statement) or 0)
 
+    def count_after(
+        self,
+        symbol: str,
+        interval: str,
+        open_time: datetime,
+        *,
+        closed_only: bool = True,
+    ) -> int:
+        statement = select(func.count(Candle.id)).where(
+            Candle.symbol == symbol.upper(),
+            Candle.interval == interval,
+            Candle.open_time > open_time,
+        )
+        if closed_only:
+            statement = statement.where(Candle.is_closed.is_(True))
+        return int(self.session.scalar(statement) or 0)
+
     def exists(
         self,
         symbol: str,
