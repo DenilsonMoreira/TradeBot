@@ -1,7 +1,9 @@
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from app.ai.datasets.builder import build_rows
+import pytest
+
+from app.ai.datasets.builder import build_rows, validate_candle_continuity
 from app.ai.trainer import train_candidates
 from app.backtest.engine import BacktestConfig, run_ema_cross_backtest
 from app.models.candle import Candle
@@ -36,6 +38,14 @@ def test_dataset_is_temporal_and_has_no_future_last_row():
     assert rows == sorted(rows, key=lambda row: row["open_time"])
     assert rows[-1]["candle_id"] < data[-1].id
     assert all("label" in row and "future_return" in row for row in rows)
+
+
+def test_dataset_rejects_large_price_discontinuity():
+    data = candles()
+    data[60].close = Decimal("1")
+
+    with pytest.raises(ValueError, match="descontinuidade"):
+        validate_candle_continuity(data)
 
 
 def test_training_compares_baseline_and_models(tmp_path):

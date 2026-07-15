@@ -1,5 +1,6 @@
 param(
     [string]$EnvironmentFile = ".env.production",
+    [string]$ComposeFile = "docker-compose.prod.yml",
     [string]$OutputDirectory = "backups"
 )
 
@@ -7,6 +8,9 @@ $ErrorActionPreference = "Stop"
 
 if (-not (Test-Path -LiteralPath $EnvironmentFile)) {
     throw "Arquivo de ambiente não encontrado: $EnvironmentFile"
+}
+if (-not (Test-Path -LiteralPath $ComposeFile -PathType Leaf)) {
+    throw "Arquivo do Docker Compose não encontrado: $ComposeFile"
 }
 
 $values = @{}
@@ -23,7 +27,7 @@ $outputPath = [System.IO.Path]::GetFullPath($OutputDirectory)
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $backupPath = Join-Path $outputPath "tradebrain-$timestamp.dump"
 $arguments = @(
-    "compose", "--env-file", $EnvironmentFile, "-f", "docker-compose.prod.yml",
+    "compose", "--env-file", $EnvironmentFile, "-f", $ComposeFile,
     "exec", "-T", "db", "pg_dump", "-U", $values["POSTGRES_USER"],
     "-d", $values["POSTGRES_DB"], "-Fc"
 )

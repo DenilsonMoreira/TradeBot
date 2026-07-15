@@ -1,4 +1,9 @@
-from app.ai.datasets.builder import FEATURE_NAMES, build_rows, dataset_version
+from app.ai.datasets.builder import (
+    FEATURE_NAMES,
+    build_rows,
+    dataset_version,
+    validate_candle_continuity,
+)
 from app.models.research import DatasetArtifact
 from app.repositories.candle_repository import CandleRepository
 from app.repositories.research_repository import ResearchRepository
@@ -13,6 +18,7 @@ class DatasetService:
         if not 0.5 <= train_ratio < 1:
             raise ValueError("train_ratio deve estar entre 0.5 e 1")
         candles = list(reversed(self.candles.get_history(symbol, interval, limit=limit, closed_only=True)))
+        largest_gap = validate_candle_continuity(candles)
         rows = build_rows(candles, horizon)
         if len(rows) < 30:
             raise ValueError("dados insuficientes para criar dataset")
@@ -26,7 +32,7 @@ class DatasetService:
             version=version,
             feature_names=FEATURE_NAMES, rows=rows, train_size=train_size,
             test_size=len(rows) - train_size,
-            metadata_json={"horizon": horizon, "train_ratio": train_ratio, "split": "temporal", "closed_candles_only": True},
+            metadata_json={"horizon": horizon, "train_ratio": train_ratio, "split": "temporal", "closed_candles_only": True, "max_candle_gap": largest_gap},
         )
         try:
             self.research.save(artifact)

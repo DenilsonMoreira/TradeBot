@@ -153,6 +153,14 @@ Web operacional
 
 ✔ Mercado multiativo com candles OHLC e atualização automática visível
 
+✔ Backfill idempotente de 3.000 candles por mercado e validação de continuidade
+
+✔ Pipeline temporal real com seis candidatos e critérios conservadores de promoção
+
+✔ Ciclo completo de compra e venda validado na Testnet com mínimo seguro de 6 USDT
+
+✔ Backup local validado por restauração em PostgreSQL temporário
+
 Pendente: apontar domínio e executar a publicação no servidor
 
 

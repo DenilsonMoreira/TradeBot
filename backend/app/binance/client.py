@@ -27,6 +27,7 @@ class BinanceTestnetClient:
         interval: str = "15m",
         limit: int = 100,
         start_time: int | None = None,
+        end_time: int | None = None,
     ) -> list:
         params = {
             "symbol": symbol.upper(),
@@ -35,6 +36,8 @@ class BinanceTestnetClient:
         }
         if start_time is not None:
             params["startTime"] = start_time
+        if end_time is not None:
+            params["endTime"] = end_time
 
         async with httpx.AsyncClient(timeout=15) as client:
             response = await client.get(

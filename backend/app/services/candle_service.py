@@ -18,6 +18,7 @@ class CandleClient(Protocol):
         interval: str = "15m",
         limit: int = 100,
         start_time: int | None = None,
+        end_time: int | None = None,
     ) -> list: ...
 
 
@@ -141,6 +142,39 @@ class CandleService:
             interval,
             limit,
             start_time=start_time,
+        )
+        return self._persist(
+            normalized_symbol,
+            interval,
+            payloads,
+        )
+
+    async def sync_historical_before(
+        self,
+        symbol: str,
+        interval: str,
+        *,
+        limit: int = 1000,
+    ) -> list[Candle]:
+        self._validate_limit(limit)
+        normalized_symbol = symbol.upper()
+        first_open_time = self.repository.get_first_open_time(
+            normalized_symbol,
+            interval,
+        )
+        if first_open_time is None:
+            return await self.sync_history(
+                normalized_symbol,
+                interval,
+                limit=limit,
+            )
+
+        end_time = self._to_milliseconds(first_open_time) - 1
+        payloads = await self.client.get_candles(
+            normalized_symbol,
+            interval,
+            limit,
+            end_time=end_time,
         )
         return self._persist(
             normalized_symbol,

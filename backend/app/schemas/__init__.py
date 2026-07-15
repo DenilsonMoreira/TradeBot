@@ -34,7 +34,7 @@ class SignalResponse(SignalCreate):
 
 class ManualBuyRequest(BaseModel):
     confirmation: str
-    quote_amount: float = Field(default=5.0, ge=5.0, le=20.0)
+    quote_amount: float = Field(default=6.0, ge=6.0, le=20.0)
 
 
 class ManualSellRequest(BaseModel):
@@ -77,7 +77,7 @@ class PositionResponse(BaseModel):
 
 class TradingRiskSettingsUpdate(BaseModel):
     auto_entry_enabled: bool
-    max_quote_amount_per_trade: float = Field(ge=5.0, le=20.0)
+    max_quote_amount_per_trade: float = Field(ge=6.0, le=20.0)
     max_daily_loss: float = Field(ge=1.0, le=500.0)
     max_open_positions: int = Field(ge=1, le=1)
     cooldown_minutes: int = Field(ge=1, le=1440)

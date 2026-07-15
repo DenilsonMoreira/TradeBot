@@ -17,7 +17,7 @@ from app.models import (
 logger = logging.getLogger(__name__)
 
 TRADE_SYMBOL = "BTCUSDT"
-FIXED_QUOTE_AMOUNT = 5.0
+FIXED_QUOTE_AMOUNT = 6.0
 
 
 def has_open_position(db: Session, symbol: str) -> bool:

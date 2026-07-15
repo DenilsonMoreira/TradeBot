@@ -2,6 +2,7 @@ from dataclasses import asdict
 from decimal import Decimal
 
 from app.backtest.engine import BacktestConfig, run_ema_cross_backtest, serialize_trade
+from app.ai.datasets.builder import validate_candle_continuity
 from app.models.research import BacktestRun
 from app.repositories.candle_repository import CandleRepository
 from app.repositories.research_repository import ResearchRepository
@@ -14,6 +15,7 @@ class BacktestService:
 
     def run(self, symbol: str, interval: str, config: BacktestConfig, limit: int = 1000) -> BacktestRun:
         candles = list(reversed(self.candles.get_history(symbol, interval, limit=limit, closed_only=True)))
+        validate_candle_continuity(candles)
         result = run_ema_cross_backtest(candles, config)
         parameters = {key: str(value) for key, value in asdict(config).items()}
         run = BacktestRun(

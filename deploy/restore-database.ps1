@@ -2,6 +2,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$BackupFile,
     [string]$EnvironmentFile = ".env.production",
+    [string]$ComposeFile = "docker-compose.prod.yml",
     [Parameter(Mandatory = $true)]
     [string]$Confirmation
 )
@@ -13,6 +14,9 @@ if ($Confirmation -cne "RESTAURAR-BANCO") {
 }
 if (-not (Test-Path -LiteralPath $EnvironmentFile)) {
     throw "Arquivo de ambiente não encontrado: $EnvironmentFile"
+}
+if (-not (Test-Path -LiteralPath $ComposeFile -PathType Leaf)) {
+    throw "Arquivo do Docker Compose não encontrado: $ComposeFile"
 }
 if (-not (Test-Path -LiteralPath $BackupFile -PathType Leaf)) {
     throw "Backup não encontrado: $BackupFile"
@@ -29,7 +33,7 @@ if ([string]::IsNullOrWhiteSpace($values["POSTGRES_DB"]) -or [string]::IsNullOrW
 
 $resolvedBackup = (Resolve-Path -LiteralPath $BackupFile).Path
 $arguments = @(
-    "compose", "--env-file", $EnvironmentFile, "-f", "docker-compose.prod.yml",
+    "compose", "--env-file", $EnvironmentFile, "-f", $ComposeFile,
     "exec", "-T", "db", "pg_restore", "-U", $values["POSTGRES_USER"],
     "-d", $values["POSTGRES_DB"], "--clean", "--if-exists", "--no-owner", "--exit-on-error"
 )

@@ -58,7 +58,7 @@ async def lifespan(_: FastAPI):
                 TradingRiskSettings(
                     id=1,
                     auto_entry_enabled=False,
-                    max_quote_amount_per_trade=5.0,
+                    max_quote_amount_per_trade=6.0,
                     max_daily_loss=40.0,
                     max_open_positions=1,
                     cooldown_minutes=30,

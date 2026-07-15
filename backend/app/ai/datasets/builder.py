@@ -7,6 +7,25 @@ from app.models.candle import Candle
 
 
 FEATURE_NAMES = ["return_1", "ema_9_gap", "ema_21_gap", "rsi_14", "macd", "macd_signal", "atr_14_pct", "adx_14", "volume_change"]
+MAX_CANDLE_GAP = 0.20
+
+
+def validate_candle_continuity(
+    candles: list[Candle],
+    max_gap: float = MAX_CANDLE_GAP,
+) -> float:
+    largest_gap = 0.0
+    for previous, current in zip(candles, candles[1:]):
+        if previous.close <= 0:
+            raise ValueError("fechamento de candle deve ser positivo")
+        gap = abs(float(current.close / previous.close - 1))
+        largest_gap = max(largest_gap, gap)
+        if gap > max_gap:
+            raise ValueError(
+                "série de candles contém descontinuidade superior a "
+                f"{max_gap:.0%}"
+            )
+    return largest_gap
 
 
 def build_rows(candles: list[Candle], horizon: int = 1) -> list[dict]:

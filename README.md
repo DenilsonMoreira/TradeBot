@@ -96,6 +96,18 @@ externo ao servidor:
 .\deploy\backup-database.ps1
 ```
 
+No Docker local, informe explicitamente os arquivos usados no desenvolvimento:
+
+```powershell
+.\deploy\backup-database.ps1 -EnvironmentFile .env -ComposeFile docker-compose.yml
+```
+
+Valide o arquivo sem tocar no banco operacional:
+
+```powershell
+.\deploy\test-database-backup.ps1 -BackupFile .\backups\tradebrain-AAAAMMDD-HHMMSS.dump
+```
+
 A restauração apaga e recria os objetos existentes no banco e exige uma
 confirmação explícita:
 
@@ -118,6 +130,12 @@ arquivos de 10 MB por serviço.
 GET  /candles
 GET  /candles/latest
 POST /candles/sync
+```
+
+Para preencher até 3.000 candles anteriores por mercado no Docker local:
+
+```powershell
+docker compose run --rm api python scripts/backfill_candles.py --symbols BTCUSDT ETHUSDT BNBUSDT --interval 15m --target-per-market 3000
 ```
 
 ## API de indicadores
@@ -146,6 +164,17 @@ acesso ao serviço de execução de ordens.
 
 Modelos disponíveis: baseline, Logistic Regression, Random Forest,
 XGBoost CPU, LightGBM e CatBoost.
+
+O pipeline local executa backtest, divisão temporal, treinamento e promoção
+condicional. Por padrão, a promoção exige F1 mínimo de 0,50, ROC-AUC mínimo de
+0,55 e retorno superior ao buy-and-hold:
+
+```powershell
+docker compose run --rm api python scripts/run_research_pipeline.py --symbols BTCUSDT ETHUSDT BNBUSDT --limit 3000 --promote-qualified
+```
+
+Séries com descontinuidade de preço superior a 20% são rejeitadas antes do
+backtest e da criação do dataset.
 
 Ensembles podem ser avaliados sem promoção automática:
 
@@ -181,6 +210,10 @@ execução. Não execute a suíte pelo serviço `api` do Compose principal: os t
 de integração recriam dados e devem usar exclusivamente o banco temporário.
 
 ## Controle do bot
+
+Compras manuais e automáticas de BTCUSDT aceitam de 6 a 20 USDT. O piso de
+6 USDT mantém a quantidade arredondada acima do mínimo nocional de saída da
+Binance Spot Testnet.
 
 Ativar Testnet:
 

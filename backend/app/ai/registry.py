@@ -53,6 +53,8 @@ class ModelRegistry:
         *,
         min_strategy_return: float = 0.0,
         min_f1: float = 0.0,
+        min_roc_auc: float = 0.0,
+        require_outperform_buy_hold: bool = False,
     ) -> TrainedModel | None:
         candidates = []
         for model in self.repository.get_models_for_dataset(dataset_id):
@@ -60,8 +62,18 @@ class ModelRegistry:
                 continue
             strategy_return = float(model.metrics.get("strategy_return", 0))
             f1 = float(model.metrics.get("f1", 0))
-            if strategy_return >= min_strategy_return and f1 >= min_f1:
-                candidates.append((strategy_return, f1, model))
+            roc_auc = float(model.metrics.get("roc_auc", 0))
+            buy_and_hold = float(model.metrics.get("buy_and_hold_return", 0))
+            if (
+                strategy_return >= min_strategy_return
+                and f1 >= min_f1
+                and roc_auc >= min_roc_auc
+                and (
+                    not require_outperform_buy_hold
+                    or strategy_return > buy_and_hold
+                )
+            ):
+                candidates.append((strategy_return, f1, roc_auc, model))
         if not candidates:
             return None
-        return max(candidates, key=lambda item: (item[0], item[1]))[2]
+        return max(candidates, key=lambda item: (item[0], item[1], item[2]))[3]

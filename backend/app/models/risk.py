@@ -12,7 +12,7 @@ class TradingRiskSettings(Base):
     id: Mapped[int] = mapped_column(primary_key=True, default=1)
     auto_entry_enabled: Mapped[bool] = mapped_column(default=False, nullable=False)
     max_quote_amount_per_trade: Mapped[float] = mapped_column(
-        Float, default=5.0, nullable=False
+        Float, default=6.0, nullable=False
     )
     max_daily_loss: Mapped[float] = mapped_column(
         Float, default=40.0, nullable=False

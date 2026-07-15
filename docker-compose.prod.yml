@@ -58,6 +58,8 @@ services:
       CORS_ORIGINS: https://${TRADEBRAIN_DOMAIN}
     expose:
       - "8000"
+    volumes:
+      - model_artifacts:/app/artifacts
     depends_on:
       db:
         condition: service_healthy

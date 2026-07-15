@@ -112,6 +112,42 @@ def test_incremental_refetches_last_open_candle() -> None:
     )
 
 
+def test_historical_sync_fetches_before_first_candle() -> None:
+    repository = Mock()
+    repository.session = Mock()
+    repository.get_first_open_time.return_value = datetime.fromtimestamp(
+        OPEN_TIME_MS / 1000,
+        tz=UTC,
+    )
+    repository.upsert_many.return_value = []
+    client = AsyncMock()
+    client.get_candles.return_value = []
+    service = service_with(repository, client)
+
+    asyncio.run(service.sync_historical_before("btcusdt", "1m", limit=1000))
+
+    client.get_candles.assert_awaited_once_with(
+        "BTCUSDT", "1m", 1000, end_time=OPEN_TIME_MS - 1
+    )
+
+
+def test_historical_sync_bootstraps_empty_market() -> None:
+    repository = Mock()
+    repository.session = Mock()
+    repository.get_first_open_time.return_value = None
+    repository.upsert_many.side_effect = lambda candles: candles
+    client = AsyncMock()
+    client.get_candles.return_value = [payload()]
+    service = service_with(repository, client)
+
+    result = asyncio.run(
+        service.sync_historical_before("BTCUSDT", "1m", limit=100)
+    )
+
+    client.get_candles.assert_awaited_once_with("BTCUSDT", "1m", 100)
+    assert len(result) == 1
+
+
 def test_persistence_failure_rolls_back() -> None:
     repository = Mock()
     repository.session = Mock()

@@ -116,6 +116,24 @@ class CandleRepository:
         )
         return self.session.scalar(statement)
 
+    def get_first_open_time(
+        self,
+        symbol: str,
+        interval: str,
+    ) -> datetime | None:
+        statement = select(func.min(Candle.open_time)).where(
+            Candle.symbol == symbol.upper(),
+            Candle.interval == interval,
+        )
+        return self.session.scalar(statement)
+
+    def count(self, symbol: str, interval: str) -> int:
+        statement = select(func.count(Candle.id)).where(
+            Candle.symbol == symbol.upper(),
+            Candle.interval == interval,
+        )
+        return int(self.session.scalar(statement) or 0)
+
     def exists(
         self,
         symbol: str,

@@ -27,6 +27,7 @@ services:
     volumes:
       - ./backend/app:/app/app
       - ./backend/scripts:/app/scripts
+      - model_artifacts:/app/artifacts
     depends_on:
       db:
         condition: service_healthy
