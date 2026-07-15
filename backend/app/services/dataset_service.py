@@ -1,5 +1,6 @@
 from app.ai.datasets.builder import (
     FEATURE_NAMES,
+    TARGET_RETURN_THRESHOLD,
     build_rows,
     dataset_version,
     validate_candle_continuity,
@@ -32,7 +33,7 @@ class DatasetService:
             version=version,
             feature_names=FEATURE_NAMES, rows=rows, train_size=train_size,
             test_size=len(rows) - train_size,
-            metadata_json={"horizon": horizon, "train_ratio": train_ratio, "split": "temporal", "closed_candles_only": True, "max_candle_gap": largest_gap},
+            metadata_json={"horizon": horizon, "train_ratio": train_ratio, "split": "temporal", "closed_candles_only": True, "max_candle_gap": largest_gap, "target_return_threshold": TARGET_RETURN_THRESHOLD, "evaluation_cost_rate_per_side": 0.0015},
         )
         try:
             self.research.save(artifact)

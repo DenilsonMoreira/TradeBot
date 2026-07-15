@@ -65,6 +65,13 @@ class EnsembleService:
             y_test,
             future_returns,
             threshold=threshold,
+            holding_period=int(dataset.metadata_json.get("horizon", 1)),
+            cost_rate=float(
+                dataset.metadata_json.get(
+                    "evaluation_cost_rate_per_side",
+                    0.0015,
+                )
+            ),
         )
         target = Path(self.artifact_dir)
         target.mkdir(parents=True, exist_ok=True)

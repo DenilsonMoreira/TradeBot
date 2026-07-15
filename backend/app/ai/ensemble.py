@@ -12,6 +12,8 @@ def evaluate_soft_voting(
     future_returns: list[float],
     *,
     threshold: float = 0.5,
+    holding_period: int = 1,
+    cost_rate: float = 0.0015,
 ) -> tuple[dict, list[float], list[float]]:
     if len(artifact_paths) < 2:
         raise ValueError("ensemble requer ao menos dois modelos")
@@ -20,7 +22,8 @@ def evaluate_soft_voting(
 
     probabilities_by_model = []
     for path in artifact_paths:
-        model = joblib.load(path)
+        artifact = joblib.load(path)
+        model = artifact.get("model") if isinstance(artifact, dict) else artifact
         if not hasattr(model, "predict_proba"):
             raise ValueError("todos os modelos devem fornecer probabilidades")
         probabilities_by_model.append(model.predict_proba(x_test)[:, 1])
@@ -37,5 +40,7 @@ def evaluate_soft_voting(
         predictions,
         probabilities,
         future_returns,
+        holding_period=holding_period,
+        cost_rate=cost_rate,
     )
     return metrics, probabilities, weights

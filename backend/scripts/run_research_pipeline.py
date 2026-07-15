@@ -33,7 +33,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-strategy-return", type=float, default=0.0)
     parser.add_argument("--min-f1", type=float, default=0.5)
     parser.add_argument("--min-roc-auc", type=float, default=0.55)
+    parser.add_argument("--min-trades", type=int, default=20)
     parser.add_argument("--allow-underperform-buy-hold", action="store_true")
+    parser.add_argument("--skip-backtest", action="store_true")
+    parser.add_argument("--summary-only", action="store_true")
     return parser.parse_args()
 
 
@@ -41,16 +44,18 @@ def run_market(symbol: str, args: argparse.Namespace) -> dict:
     with SessionLocal() as session:
         candles = CandleRepository(session)
         research = ResearchRepository(session)
-        backtest = BacktestService(candles, research).run(
-            symbol,
-            args.interval,
-            BacktestConfig(
-                args.initial_capital,
-                args.fee_rate,
-                args.slippage_rate,
-            ),
-            args.limit,
-        )
+        backtest = None
+        if not args.skip_backtest:
+            backtest = BacktestService(candles, research).run(
+                symbol,
+                args.interval,
+                BacktestConfig(
+                    args.initial_capital,
+                    args.fee_rate,
+                    args.slippage_rate,
+                ),
+                args.limit,
+            )
         dataset = DatasetService(candles, research).build(
             symbol,
             args.interval,
@@ -68,6 +73,7 @@ def run_market(symbol: str, args: argparse.Namespace) -> dict:
             min_strategy_return=args.min_strategy_return,
             min_f1=args.min_f1,
             min_roc_auc=args.min_roc_auc,
+            min_trade_count=args.min_trades,
             require_outperform_buy_hold=not args.allow_underperform_buy_hold,
         )
         active = None
@@ -77,7 +83,7 @@ def run_market(symbol: str, args: argparse.Namespace) -> dict:
         return {
             "symbol": symbol,
             "candles_requested": args.limit,
-            "backtest": {
+            "backtest": None if backtest is None else {
                 "id": backtest.id,
                 "final_capital": str(backtest.final_capital),
                 "metrics": backtest.metrics,
@@ -93,7 +99,23 @@ def run_market(symbol: str, args: argparse.Namespace) -> dict:
                     "id": model.id,
                     "algorithm": model.algorithm,
                     "status": model.status,
-                    "metrics": model.metrics,
+                    "metrics": (
+                        {
+                            key: model.metrics.get(key)
+                            for key in (
+                                "f1",
+                                "roc_auc",
+                                "strategy_return",
+                                "buy_and_hold_return",
+                                "trade_count",
+                                "threshold",
+                                "validation_strategy_return",
+                                "validation_trade_count",
+                            )
+                        }
+                        if args.summary_only
+                        else model.metrics
+                    ),
                 }
                 for model in models
             ],

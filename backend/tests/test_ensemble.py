@@ -2,6 +2,7 @@ from pathlib import Path
 
 import joblib
 import numpy as np
+import pytest
 
 from app.ai.ensemble import evaluate_soft_voting
 
@@ -33,4 +34,6 @@ def test_soft_voting_uses_uniform_probabilities_and_oos_metrics(tmp_path: Path):
     assert probabilities == [0.7, 0.30000000000000004]
     assert weights == [0.5, 0.5]
     assert metrics["accuracy"] == 1.0
-    assert metrics["strategy_return"] == 0.02
+    assert metrics["strategy_return"] == pytest.approx(
+        (1 - 0.0015) ** 2 * 1.02 - 1
+    )

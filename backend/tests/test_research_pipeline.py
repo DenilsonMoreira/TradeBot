@@ -3,8 +3,9 @@ from decimal import Decimal
 
 import pytest
 
-from app.ai.datasets.builder import build_rows, validate_candle_continuity
-from app.ai.trainer import train_candidates
+from app.ai.datasets.builder import FEATURE_NAMES, build_rows, validate_candle_continuity
+from app.ai.evaluator import evaluate_predictions
+from app.ai.trainer import select_threshold, train_candidates
 from app.backtest.engine import BacktestConfig, run_ema_cross_backtest
 from app.models.candle import Candle
 
@@ -38,6 +39,7 @@ def test_dataset_is_temporal_and_has_no_future_last_row():
     assert rows == sorted(rows, key=lambda row: row["open_time"])
     assert rows[-1]["candle_id"] < data[-1].id
     assert all("label" in row and "future_return" in row for row in rows)
+    assert set(rows[0]["features"]) == set(FEATURE_NAMES)
 
 
 def test_dataset_rejects_large_price_discontinuity():
@@ -46,6 +48,39 @@ def test_dataset_rejects_large_price_discontinuity():
 
     with pytest.raises(ValueError, match="descontinuidade"):
         validate_candle_continuity(data)
+
+
+def test_financial_evaluation_compounds_returns_and_costs():
+    metrics = evaluate_predictions(
+        [1, 0, 1],
+        [1, 0, 1],
+        [0.8, 0.2, 0.7],
+        [0.02, -0.01, 0.03],
+        cost_rate=0.001,
+    )
+
+    expected = ((1 - 0.001) ** 2 * 1.02) * (
+        (1 - 0.001) ** 2 * 1.03
+    ) - 1
+    assert metrics["strategy_return"] == pytest.approx(expected)
+    assert metrics["buy_and_hold_return"] == pytest.approx(
+        1.02 * 0.99 * 1.03 - 1
+    )
+    assert metrics["trade_count"] == 2
+
+
+def test_threshold_is_selected_on_validation_financial_return():
+    threshold, metrics = select_threshold(
+        [1, 0, 1, 0, 1, 0],
+        [0.85, 0.75, 0.8, 0.7, 0.9, 0.55],
+        [0.02, -0.03, 0.01, -0.02, 0.03, -0.01],
+        holding_period=1,
+        cost_rate=0.001,
+        min_trades=2,
+    )
+
+    assert threshold >= 0.8
+    assert metrics["strategy_return"] > 0
 
 
 def test_training_compares_baseline_and_models(tmp_path):

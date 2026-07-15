@@ -157,6 +157,10 @@ Web operacional
 
 ✔ Pipeline temporal real com seis candidatos e critérios conservadores de promoção
 
+✔ Dataset v2 com custos compostos, alvo líquido, classes balanceadas e limiar calibrado fora do teste
+
+✔ Avaliação de horizontes de 15 minutos e 1 hora sem promoção de modelos instáveis
+
 ✔ Ciclo completo de compra e venda validado na Testnet com mínimo seguro de 6 USDT
 
 ✔ Backup local validado por restauração em PostgreSQL temporário

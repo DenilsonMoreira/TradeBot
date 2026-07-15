@@ -167,7 +167,8 @@ XGBoost CPU, LightGBM e CatBoost.
 
 O pipeline local executa backtest, divisão temporal, treinamento e promoção
 condicional. Por padrão, a promoção exige F1 mínimo de 0,50, ROC-AUC mínimo de
-0,55 e retorno superior ao buy-and-hold:
+0,55, pelo menos 20 operações e retorno superior ao buy-and-hold. O limiar de
+probabilidade é calibrado somente em uma janela de validação anterior ao teste:
 
 ```powershell
 docker compose run --rm api python scripts/run_research_pipeline.py --symbols BTCUSDT ETHUSDT BNBUSDT --limit 3000 --promote-qualified
@@ -175,6 +176,10 @@ docker compose run --rm api python scripts/run_research_pipeline.py --symbols BT
 
 Séries com descontinuidade de preço superior a 20% são rejeitadas antes do
 backtest e da criação do dataset.
+
+O relatório mais recente está em
+`backend/docs/model-evaluation-2026-07.md`. Nenhum candidato atual cumpriu os
+critérios de promoção, portanto o registro permanece sem modelo ativo.
 
 Ensembles podem ser avaliados sem promoção automática:
 

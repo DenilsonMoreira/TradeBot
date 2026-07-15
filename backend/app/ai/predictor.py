@@ -11,8 +11,14 @@ def predict_probability(
     member_paths: dict[int, str] | None = None,
 ) -> tuple[float, float]:
     if algorithm != "ensemble_soft_voting":
-        model = joblib.load(artifact_path)
-        return float(model.predict_proba([feature_vector])[0][1]), 0.5
+        artifact = joblib.load(artifact_path)
+        if isinstance(artifact, dict) and "model" in artifact:
+            model = artifact["model"]
+            threshold = float(artifact.get("threshold", 0.5))
+        else:
+            model = artifact
+            threshold = 0.5
+        return float(model.predict_proba([feature_vector])[0][1]), threshold
 
     config = json.loads(Path(artifact_path).read_text(encoding="utf-8"))
     if member_paths is None:
@@ -22,7 +28,8 @@ def predict_probability(
         path = member_paths.get(model_id)
         if path is None:
             raise ValueError("artefato de membro não encontrado")
-        model = joblib.load(path)
+        artifact = joblib.load(path)
+        model = artifact.get("model") if isinstance(artifact, dict) else artifact
         probabilities.append(float(model.predict_proba([feature_vector])[0][1]))
     probability = sum(value * weight for value, weight in zip(probabilities, config["weights"]))
     return probability, float(config["threshold"])
