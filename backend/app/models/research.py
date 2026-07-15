@@ -57,3 +57,32 @@ class TrainedModel(Base):
     promoted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ResearchEvaluationRun(Base):
+    __tablename__ = "research_evaluation_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('RUNNING', 'COMPLETED', 'FAILED', 'SKIPPED')",
+            name="ck_research_evaluation_runs_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(20), index=True, nullable=False)
+    interval: Mapped[str] = mapped_column(String(10), nullable=False)
+    dataset_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("datasets.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    status: Mapped[str] = mapped_column(String(16), index=True, nullable=False)
+    new_candles: Mapped[int] = mapped_column(nullable=False)
+    required_candles: Mapped[int] = mapped_column(nullable=False)
+    models_trained: Mapped[int] = mapped_column(nullable=False, default=0)
+    recommended_algorithm: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    activated_algorithm: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    metrics_summary: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

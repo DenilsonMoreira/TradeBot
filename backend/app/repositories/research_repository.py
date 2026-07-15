@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.research import BacktestRun, DatasetArtifact, TrainedModel
+from app.models.research import BacktestRun, DatasetArtifact, ResearchEvaluationRun, TrainedModel
 from app.models.prediction import Prediction
 
 
@@ -53,6 +53,16 @@ class ResearchRepository:
 
     def list_models(self, limit: int = 50):
         return self.session.scalars(select(TrainedModel).order_by(TrainedModel.created_at.desc()).limit(limit)).all()
+
+    def list_evaluation_runs(self, limit: int = 50):
+        return self.session.scalars(
+            select(ResearchEvaluationRun)
+            .order_by(
+                ResearchEvaluationRun.started_at.desc(),
+                ResearchEvaluationRun.id.desc(),
+            )
+            .limit(limit)
+        ).all()
 
     def get_models_for_dataset(self, dataset_id: int):
         return self.session.scalars(

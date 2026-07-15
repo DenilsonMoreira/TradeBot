@@ -21,6 +21,7 @@ type AuditEvent = { id: number; actor: string; action: string; resource: string;
 type Notification = { id: number; severity: string; category: string; title: string; message: string; resource_id: string | null; read_at: string | null; created_at: string };
 type ResearchMarketStatus = { symbol: string; interval: string; due: boolean; available_new_candles: number; required_new_candles: number; missing_candles: number; progress_percent: number; last_evaluated_at: string | null; estimated_ready_at: string | null; dataset_id: number | null };
 type ResearchAutomationStatus = { enabled: boolean; promote_qualified: boolean; evaluation_interval_seconds: number; dataset_limit: number; horizon: number; markets: ResearchMarketStatus[] };
+type ResearchEvaluation = { id: number; symbol: string; interval: string; dataset_id: number | null; status: string; new_candles: number; required_candles: number; models_trained: number; recommended_algorithm: string | null; activated_algorithm: string | null; metrics_summary: Record<string, unknown>; error_message: string | null; started_at: string; completed_at: string | null };
 
 let csrfToken = "";
 
@@ -84,6 +85,7 @@ export default function Home() {
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [researchAutomation, setResearchAutomation] = useState<ResearchAutomationStatus | null>(null);
+  const [researchEvaluations, setResearchEvaluations] = useState<ResearchEvaluation[]>([]);
   const [activeSection, setActiveSection] = useState("overview");
 
   const loadMarket = useCallback(async (symbols: string[], interval: string) => {
@@ -109,7 +111,7 @@ export default function Home() {
     setBusy(true);
     setError("");
     try {
-      const [nextStatus, nextPositions, nextMarketConfig, nextModels, nextBacktests, nextRisk, nextSignals, nextOrders, nextAuditEvents, nextNotifications, nextResearchAutomation] = await Promise.all([
+      const [nextStatus, nextPositions, nextMarketConfig, nextModels, nextBacktests, nextRisk, nextSignals, nextOrders, nextAuditEvents, nextNotifications, nextResearchAutomation, nextResearchEvaluations] = await Promise.all([
         request<BotStatus>("/bot/status"),
         request<Position[]>("/positions?limit=20"),
         request<MarketConfig>("/candles/config"),
@@ -121,6 +123,7 @@ export default function Home() {
         request<AuditEvent[]>("/audit-events?limit=12"),
         request<Notification[]>("/notifications?limit=12"),
         request<ResearchAutomationStatus>("/research/automation/status"),
+        request<ResearchEvaluation[]>("/research/evaluations?limit=12"),
       ]);
       setStatus(nextStatus);
       setPositions(nextPositions);
@@ -135,6 +138,7 @@ export default function Home() {
       setAuditEvents(nextAuditEvents);
       setNotifications(nextNotifications);
       setResearchAutomation(nextResearchAutomation);
+      setResearchEvaluations(nextResearchEvaluations);
       void request<Account>("/account/balance").then(setAccount).catch(() => setAccount(null));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível carregar o painel");
@@ -414,6 +418,9 @@ export default function Home() {
               <small>{market.symbol}</small><strong>{model?.algorithm.replaceAll("_", " ") ?? "Sem candidato"}</strong>
               {model ? <dl><div><dt>Teste final</dt><dd className={Number(model.metrics.strategy_return ?? 0) >= 0 ? "positive" : "negative"}>{Number(model.metrics.strategy_return ?? 0).toLocaleString("pt-BR", { style: "percent", maximumFractionDigits: 2 })}</dd></div><div><dt>Walk-forward</dt><dd className={Number(model.metrics.walk_forward_return ?? 0) >= 0 ? "positive" : "negative"}>{Number(model.metrics.walk_forward_return ?? 0).toLocaleString("pt-BR", { style: "percent", maximumFractionDigits: 2 })}</dd></div><div><dt>Folds lucrativos</dt><dd>{model.metrics.walk_forward_profitable_folds ?? 0}/{model.metrics.walk_forward_folds ?? 0}</dd></div></dl> : <p>Aguardando modelos avaliados.</p>}
             </article>)}</div>
+          </div>
+          <div className="research-history"><div className="research-subtitle"><strong>Histórico de reavaliações automáticas</strong><span>{researchEvaluations.length} execuções registradas</span></div>
+            {researchEvaluations.length ? <div className="table-wrap"><table><thead><tr><th>Início</th><th>Mercado</th><th>Status</th><th>Modelos</th><th>Resultado</th></tr></thead><tbody>{researchEvaluations.map((run) => <tr key={run.id}><td>{new Date(run.started_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</td><td><b>{run.symbol}</b> · {run.interval}</td><td><span className={`evaluation-status ${run.status.toLowerCase()}`}>{run.status === "COMPLETED" ? "Concluída" : run.status === "FAILED" ? "Falhou" : run.status === "SKIPPED" ? "Ignorada" : "Executando"}</span></td><td>{run.models_trained}</td><td>{run.error_message ?? (run.activated_algorithm ? `${run.activated_algorithm.replaceAll("_", " ")} ativado` : run.recommended_algorithm ? `${run.recommended_algorithm.replaceAll("_", " ")} recomendado` : "Nenhum candidato aprovado")}</td></tr>)}</tbody></table></div> : <p className="empty-inline">Nenhuma reavaliação automática executada. O histórico começará quando a primeira janela inédita estiver completa.</p>}
           </div>
         </section>
 

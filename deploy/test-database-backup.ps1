@@ -55,7 +55,7 @@ try {
         -U tradebrain_restore `
         -d tradebrain_restore `
         -v ON_ERROR_STOP=1 `
-        -c "SELECT (SELECT count(*) FROM candles) AS candles, (SELECT count(*) FROM orders) AS orders, (SELECT count(*) FROM positions) AS positions, (SELECT count(*) FROM datasets) AS datasets, (SELECT count(*) FROM trained_models) AS models;"
+        -c "SELECT (SELECT count(*) FROM candles) AS candles, (SELECT count(*) FROM orders) AS orders, (SELECT count(*) FROM positions) AS positions, (SELECT count(*) FROM datasets) AS datasets, (SELECT count(*) FROM trained_models) AS models, (SELECT count(*) FROM research_evaluation_runs) AS evaluations, (SELECT count(*) FROM notifications) AS notifications;"
     if ($LASTEXITCODE -ne 0) {
         throw "A consulta de validação do banco restaurado falhou."
     }

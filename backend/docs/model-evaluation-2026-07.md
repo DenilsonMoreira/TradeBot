@@ -54,3 +54,6 @@ O `trainer-worker` implementa essa espera. Ele consulta o progresso a cada
 hora, mas só cria um novo dataset depois de 778 candles posteriores ao último
 teste para cada símbolo. Esse valor cobre os 774 registros de teste e a margem
 de quatro candles do horizonte. A promoção automática permanece desligada.
+Execuções reais são registradas em histórico persistente, auditadas e geram
+notificação de sucesso, ausência de candidato ou falha; simples consultas de
+progresso não geram notificações.

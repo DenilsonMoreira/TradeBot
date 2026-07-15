@@ -196,7 +196,14 @@ RESEARCH_PROMOTE_QUALIFIED=false
 
 O painel **Pesquisa & IA** mostra esse progresso por símbolo, a estimativa para
 a próxima janela e o melhor candidato atual com resultados do teste final e do
-walk-forward.
+walk-forward. Cada rodada efetivamente executada também é salva em
+`research_evaluation_runs`, aparece no histórico do painel e gera uma
+notificação para o operador. Verificações horárias sem treino não geram alerta.
+
+```text
+GET /research/automation/status
+GET /research/evaluations
+```
 
 Não habilite `RESEARCH_PROMOTE_QUALIFIED` enquanto os modelos permanecerem sem
 validação lucrativa consistente.

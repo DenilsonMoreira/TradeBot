@@ -60,6 +60,8 @@ test("keeps authentication and production metadata in the web application", asyn
   assert.match(page, /\/research\/automation\/status/);
   assert.match(page, /Próxima avaliação quantitativa/);
   assert.match(page, /research-progress-grid/);
+  assert.match(page, /\/research\/evaluations\?limit=12/);
+  assert.match(page, /Histórico de reavaliações automáticas/);
   assert.match(page, /addEventListener\("hashchange", selectHashSection\)/);
   assert.match(page, /aria-current=\{activeSection === item\.id \? "page" : undefined\}/);
   assert.match(layout, /title:\s*"TradeBrain · Quantitative Trading Desk"/);

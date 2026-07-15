@@ -4,7 +4,7 @@ from app.api.dependencies import get_backtest_service, get_dataset_service, get_
 from app.ai.registry import ModelRegistry
 from app.backtest.engine import BacktestConfig
 from app.repositories.research_repository import ResearchRepository
-from app.schemas.research import BacktestRequest, BacktestResponse, DatasetRequest, DatasetResponse, EnsembleRequest, ModelResponse, PredictionRequest, PredictionResponse, ResearchAutomationStatus, TrainingRequest
+from app.schemas.research import BacktestRequest, BacktestResponse, DatasetRequest, DatasetResponse, EnsembleRequest, ModelResponse, PredictionRequest, PredictionResponse, ResearchAutomationStatus, ResearchEvaluationResponse, TrainingRequest
 from app.services.ensemble_service import EnsembleService
 from app.services.prediction_service import PredictionService
 from app.services.backtest_service import BacktestService
@@ -15,6 +15,18 @@ from app.config import settings
 
 
 router = APIRouter(tags=["research"])
+
+
+@router.get(
+    "/research/evaluations",
+    response_model=list[ResearchEvaluationResponse],
+    dependencies=[Depends(get_operator_session)],
+)
+def list_research_evaluations(
+    limit: int = Query(default=30, ge=1, le=200),
+    repository: ResearchRepository = Depends(get_research_repository),
+):
+    return repository.list_evaluation_runs(limit)
 
 
 @router.get(

@@ -6,9 +6,13 @@ from app.config import settings
 from app.database import SessionLocal
 from app.repositories.candle_repository import CandleRepository
 from app.repositories.research_repository import ResearchRepository
+from app.repositories.notification_repository import NotificationRepository
+from app.repositories.audit_repository import AuditRepository
 from app.services.dataset_service import DatasetService
 from app.services.research_automation_service import ResearchAutomationService
 from app.services.training_service import TrainingService
+from app.services.notification_service import NotificationService
+from app.services.audit_service import AuditService
 
 
 logging.basicConfig(
@@ -31,6 +35,9 @@ def run_cycle() -> list[dict]:
             DatasetService(candles, research),
             TrainingService(research, settings.model_artifact_dir),
             ModelRegistry(research),
+            NotificationService(NotificationRepository(session)),
+            AuditService(AuditRepository(session)),
+            settings.auth_operator_email,
         )
         for symbol in filter(None, symbols):
             for interval in filter(None, intervals):

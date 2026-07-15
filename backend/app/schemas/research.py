@@ -110,3 +110,22 @@ class ResearchAutomationStatus(BaseModel):
     dataset_limit: int
     horizon: int
     markets: list[ResearchMarketStatus]
+
+
+class ResearchEvaluationResponse(BaseModel):
+    id: int
+    symbol: str
+    interval: str
+    dataset_id: int | None
+    status: str
+    new_candles: int
+    required_candles: int
+    models_trained: int
+    recommended_algorithm: str | None
+    activated_algorithm: str | None
+    metrics_summary: dict[str, Any]
+    error_message: str | None
+    started_at: datetime
+    completed_at: datetime | None
+
+    model_config = {"from_attributes": True}
