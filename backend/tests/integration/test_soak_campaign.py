@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from sqlalchemy import delete
 
@@ -68,3 +70,48 @@ def test_soak_campaign_requires_automatic_entries_disabled() -> None:
             SoakService(session).start()
 
         set_auto_entry(session, False)
+
+
+def test_soak_monitor_records_new_alert_once_and_recovery() -> None:
+    with SessionLocal() as session:
+        session.execute(delete(SoakCampaign))
+        set_auto_entry(session, False)
+        service = SoakService(session)
+        service.start()
+        session.commit()
+
+        service.monitor_cycle()
+        set_auto_entry(session, True)
+        first_alert = service.monitor_cycle()
+        repeated_alert = service.monitor_cycle()
+        set_auto_entry(session, False)
+        recovered = service.monitor_cycle()
+
+        assert "automatic_entries_disabled" in first_alert["new_alerts"]
+        assert "automatic_entries_disabled" not in repeated_alert["new_alerts"]
+        assert "automatic_entries_disabled" in recovered["recovered_alerts"]
+        assert recovered["campaign"].result["last_checked_at"]
+
+        session.execute(delete(SoakCampaign))
+        session.commit()
+
+
+def test_soak_monitor_completes_due_campaign_once() -> None:
+    with SessionLocal() as session:
+        session.execute(delete(SoakCampaign))
+        set_auto_entry(session, False)
+        service = SoakService(session)
+        campaign = service.start()
+        campaign.ends_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        session.commit()
+
+        completed = service.monitor_cycle()
+        repeated = service.monitor_cycle()
+
+        assert completed["completed"] is True
+        assert completed["campaign"].status == "FAILED"
+        assert completed["campaign"].result["monitoring"]["last_checked_at"]
+        assert repeated is None
+
+        session.execute(delete(SoakCampaign))
+        session.commit()

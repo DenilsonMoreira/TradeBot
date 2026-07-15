@@ -237,7 +237,9 @@ experimento. Essa referência não é uma cotação cambial ao vivo.
 Durante a campanha, o serviço de execução aplica limites adicionais a compras
 manuais e automáticas: máximo de 6 USDT por compra, exposição de até 100 USDT e
 perda acumulada máxima de 5 USDT. O início é recusado se a entrada automática
-estiver habilitada e não altera o modo do bot.
+estiver habilitada e não altera o modo do bot. Enquanto a observação estiver em
+andamento, a API e o worker também bloqueiam qualquer tentativa de reativar
+entradas automáticas.
 
 ```text
 GET  /testnet/soak
@@ -247,7 +249,9 @@ POST /testnet/soak/start
 O resultado só é aprovado após sete dias, cobertura mínima de 95% dos candles
 fechados de 15 minutos nos três mercados, feeds atuais, ausência de ordens
 rejeitadas e respeito a todos os limites. A confirmação para iniciar é
-`INICIAR TESTE R$ 500`.
+`INICIAR TESTE R$ 500`. O worker verifica a campanha a cada minuto, registra
+alertas e recuperações sem duplicação e notifica o operador quando o teste é
+encerrado automaticamente.
 
 ## Testes
 

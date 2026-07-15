@@ -13,7 +13,7 @@ from app.models import (
     PositionStatus,
     TradingRiskSettings
 )
-from app.services.soak_service import validate_active_soak_limits
+from app.services.soak_service import TestnetSoakService, validate_active_soak_limits
 
 logger = logging.getLogger(__name__)
 
@@ -236,6 +236,9 @@ def can_open_automatic_position(
 
     if not settings.auto_entry_enabled:
         return False, "Entrada automática está desativada."
+
+    if TestnetSoakService(db).active() is not None:
+        return False, "Entrada automática bloqueada durante a campanha observacional."
 
     allowed, reason = validate_active_soak_limits(
         db,

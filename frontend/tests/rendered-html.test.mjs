@@ -65,6 +65,8 @@ test("keeps authentication and production metadata in the web application", asyn
   assert.match(page, /\/testnet\/soak/);
   assert.match(page, /Campanha Testnet · referência de R\$ 500/);
   assert.match(page, /Entrada automática continua desativada/);
+  assert.match(page, /Monitor de segurança normal/);
+  assert.match(page, /Entrada automática bloqueada durante o teste contínuo/);
   assert.match(page, /addEventListener\("hashchange", selectHashSection\)/);
   assert.match(page, /aria-current=\{activeSection === item\.id \? "page" : undefined\}/);
   assert.match(layout, /title:\s*"TradeBrain · Quantitative Trading Desk"/);

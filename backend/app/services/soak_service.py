@@ -17,6 +17,14 @@ from app.models import (
 
 DEFAULT_SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
 DEFAULT_INTERVAL = "15m"
+MONITORED_CHECKS = {
+    "feeds_fresh": "Feeds de mercado atrasados",
+    "no_rejected_orders": "Ordem Testnet rejeitada",
+    "loss_within_limit": "Limite de perda da campanha atingido",
+    "exposure_within_budget": "Exposição acima do orçamento experimental",
+    "order_limits_respected": "Ordem acima do limite por operação",
+    "automatic_entries_disabled": "Entrada automática reativada durante a observação",
+}
 
 
 class TestnetSoakService:
@@ -173,18 +181,75 @@ class TestnetSoakService:
         campaign = self.active() or self.latest()
         if campaign is None:
             return {"campaign": None, "metrics": None}
-        return {"campaign": campaign, "metrics": self.metrics(campaign)}
+        if campaign.status != "RUNNING" and campaign.result:
+            metrics = campaign.result
+        else:
+            metrics = self.metrics(campaign)
+            metrics["monitoring"] = campaign.result or {}
+        return {"campaign": campaign, "metrics": metrics}
+
+    def monitor_cycle(self) -> dict | None:
+        campaign = self.active()
+        if campaign is None:
+            return None
+
+        now = datetime.now(timezone.utc)
+        metrics = self.metrics(campaign)
+        previous = dict(campaign.result or {})
+        previous_active = set(previous.get("active_alerts", []))
+        current_active = {
+            key
+            for key in MONITORED_CHECKS
+            if not metrics["checks"].get(key, False)
+        }
+        new_alerts = sorted(current_active - previous_active)
+        recovered_alerts = sorted(previous_active - current_active)
+        history = list(previous.get("alert_history", []))
+        history.extend(
+            {
+                "check": key,
+                "state": "ACTIVE",
+                "occurred_at": now.isoformat(),
+            }
+            for key in new_alerts
+        )
+        history.extend(
+            {
+                "check": key,
+                "state": "RECOVERED",
+                "occurred_at": now.isoformat(),
+            }
+            for key in recovered_alerts
+        )
+        monitoring = {
+            "active_alerts": sorted(current_active),
+            "last_checked_at": now.isoformat(),
+            "alert_history": history[-100:],
+        }
+        campaign.result = monitoring
+
+        completed = now >= campaign.ends_at
+        if completed:
+            final_result = dict(metrics)
+            final_result["monitoring"] = monitoring
+            campaign.status = "COMPLETED" if metrics["approved"] else "FAILED"
+            campaign.result = final_result
+            campaign.completed_at = now
+
+        self.db.commit()
+        return {
+            "campaign": campaign,
+            "metrics": metrics,
+            "new_alerts": new_alerts,
+            "recovered_alerts": recovered_alerts,
+            "completed": completed,
+        }
 
     def complete_if_due(self) -> TestnetSoakCampaign | None:
-        campaign = self.active()
-        if campaign is None or datetime.now(timezone.utc) < campaign.ends_at:
+        event = self.monitor_cycle()
+        if event is None or not event["completed"]:
             return None
-        result = self.metrics(campaign)
-        campaign.status = "COMPLETED" if result["approved"] else "FAILED"
-        campaign.result = result
-        campaign.completed_at = datetime.now(timezone.utc)
-        self.db.commit()
-        return campaign
+        return event["campaign"]
 
 
 def validate_active_soak_limits(db: Session, quote_amount: float) -> tuple[bool, str]:

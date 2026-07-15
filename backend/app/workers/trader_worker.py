@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 
 from app.binance.client import BinanceTestnetClient
+from app.config import settings
 from app.database import Base, SessionLocal, engine
 from app.models import BotMode, BotStatus, Position, PositionStatus, Signal, TradingRiskSettings
 from app.services.trading_service import (
@@ -13,6 +14,11 @@ from app.services.trading_service import (
     execute_market_sell,
 )
 from app.services.soak_service import TestnetSoakService
+from app.services.soak_service import MONITORED_CHECKS
+from app.repositories.audit_repository import AuditRepository
+from app.repositories.notification_repository import NotificationRepository
+from app.services.audit_service import AuditService
+from app.services.notification_service import NotificationService
 from app.strategy import calculate_ema_rsi_signal
 
 logging.basicConfig(
@@ -31,6 +37,83 @@ CHECK_INTERVAL_SECONDS = 60
 
 last_processed_candle: dict[str, int] = {}
 last_signal_by_symbol: dict[str, str] = {}
+
+
+def monitor_soak_campaign() -> None:
+    with SessionLocal() as db:
+        event = TestnetSoakService(db).monitor_cycle()
+        if event is None:
+            return
+
+        campaign = event["campaign"]
+        actor = settings.auth_operator_email or "operador-local"
+        audit = AuditService(AuditRepository(db))
+        notifications = NotificationService(NotificationRepository(db))
+
+        for check in event["new_alerts"]:
+            label = MONITORED_CHECKS[check]
+            audit.record(
+                actor,
+                "TESTNET_SOAK_ALERT",
+                "testnet_soak_campaign",
+                resource_id=str(campaign.id),
+                details={"check": check, "state": "ACTIVE"},
+            )
+            notifications.create(
+                actor,
+                "CRITICAL" if check in {"loss_within_limit", "exposure_within_budget"} else "WARNING",
+                "TESTNET_SOAK_ALERT",
+                "Alerta no teste contínuo",
+                label,
+                resource_id=str(campaign.id),
+            )
+            logger.warning("Campanha #%s | alerta: %s", campaign.id, label)
+
+        for check in event["recovered_alerts"]:
+            label = MONITORED_CHECKS[check]
+            audit.record(
+                actor,
+                "TESTNET_SOAK_RECOVERED",
+                "testnet_soak_campaign",
+                resource_id=str(campaign.id),
+                details={"check": check, "state": "RECOVERED"},
+            )
+            notifications.create(
+                actor,
+                "INFO",
+                "TESTNET_SOAK_RECOVERED",
+                "Condição do teste normalizada",
+                label,
+                resource_id=str(campaign.id),
+            )
+            logger.info("Campanha #%s | recuperado: %s", campaign.id, label)
+
+        if event["completed"]:
+            approved = event["metrics"]["approved"]
+            audit.record(
+                actor,
+                "TESTNET_SOAK_COMPLETED",
+                "testnet_soak_campaign",
+                resource_id=str(campaign.id),
+                details={"status": campaign.status, "approved": approved},
+            )
+            notifications.create(
+                actor,
+                "INFO" if approved else "CRITICAL",
+                "TESTNET_SOAK_COMPLETED",
+                "Teste contínuo aprovado" if approved else "Teste contínuo reprovado",
+                (
+                    "A campanha de sete dias atendeu todos os critérios."
+                    if approved
+                    else "A campanha terminou sem atender todos os critérios de segurança."
+                ),
+                resource_id=str(campaign.id),
+            )
+            logger.warning(
+                "Campanha Testnet contínua #%s encerrada com status %s.",
+                campaign.id,
+                campaign.status,
+            )
 
 
 def get_mode() -> BotMode:
@@ -247,14 +330,7 @@ async def run_worker() -> None:
         try:
             mode = get_mode()
 
-            with SessionLocal() as db:
-                completed_campaign = TestnetSoakService(db).complete_if_due()
-                if completed_campaign is not None:
-                    logger.warning(
-                        "Campanha Testnet contínua #%s encerrada com status %s.",
-                        completed_campaign.id,
-                        completed_campaign.status,
-                    )
+            monitor_soak_campaign()
 
             if mode == BotMode.OFF:
                 logger.info("Bot OFF. Aguardando próxima verificação.")

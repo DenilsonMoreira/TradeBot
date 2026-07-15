@@ -40,6 +40,7 @@ from app.services.audit_service import AuditService
 from app.api.routes.notifications import router as notifications_router
 from app.api.routes.soak import router as soak_router
 from app.services.notification_service import NotificationService
+from app.services.soak_service import TestnetSoakService
 
 
 @asynccontextmanager
@@ -419,6 +420,17 @@ def update_risk_settings(
     audit: AuditService = Depends(get_audit_service),
     notifications: NotificationService = Depends(get_notification_service),
 ):
+    if (
+        payload.auto_entry_enabled
+        and TestnetSoakService(db).active() is not None
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "A entrada automática não pode ser ativada durante "
+                "a campanha Testnet observacional."
+            ),
+        )
     if (
         payload.auto_entry_enabled
         and payload.confirmation != "ATIVAR ENTRADA AUTOMATICA"
