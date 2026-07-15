@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import delete
@@ -35,6 +36,8 @@ def test_soak_campaign_persists_safe_reference_budget() -> None:
         assert campaign.budget_quote == 100.0
         assert campaign.max_quote_per_trade == 6.0
         assert campaign.max_loss_quote == 5.0
+        assert isinstance(campaign.budget_brl, Decimal)
+        assert isinstance(campaign.budget_quote, Decimal)
         assert campaign.duration_hours == 168
         assert status["metrics"]["checks"]["automatic_entries_disabled"] is True
         assert status["metrics"]["order_count"] == 0

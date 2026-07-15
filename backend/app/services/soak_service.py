@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -64,6 +65,9 @@ class TestnetSoakService:
             )
         symbols = [item.upper() for item in (symbols or DEFAULT_SYMBOLS)]
         now = datetime.now(timezone.utc)
+        budget_brl_decimal = Decimal(str(budget_brl))
+        reference_decimal = Decimal(str(reference_brl_per_usdt))
+        quote_quantum = Decimal("0.00000001")
         baseline = {
             symbol: int(self.db.scalar(
                 select(func.count(Candle.id)).where(
@@ -76,11 +80,11 @@ class TestnetSoakService:
         }
         campaign = TestnetSoakCampaign(
             status="RUNNING",
-            budget_brl=budget_brl,
-            reference_brl_per_usdt=reference_brl_per_usdt,
-            budget_quote=round(budget_brl / reference_brl_per_usdt, 2),
-            max_quote_per_trade=max_quote_per_trade,
-            max_loss_quote=max_loss_quote,
+            budget_brl=budget_brl_decimal,
+            reference_brl_per_usdt=reference_decimal,
+            budget_quote=(budget_brl_decimal / reference_decimal).quantize(quote_quantum),
+            max_quote_per_trade=Decimal(str(max_quote_per_trade)),
+            max_loss_quote=Decimal(str(max_loss_quote)),
             duration_hours=duration_hours,
             symbols=symbols,
             baseline_candle_counts=baseline,
@@ -158,9 +162,9 @@ class TestnetSoakService:
             "candle_coverage": all(item["coverage_percent"] >= 95.0 for item in candles.values()),
             "feeds_fresh": all(item["fresh"] for item in candles.values()),
             "no_rejected_orders": rejected_orders == 0,
-            "loss_within_limit": realized_pnl > -campaign.max_loss_quote,
-            "exposure_within_budget": open_exposure <= campaign.budget_quote,
-            "order_limits_respected": max_requested <= campaign.max_quote_per_trade,
+            "loss_within_limit": realized_pnl > -float(campaign.max_loss_quote),
+            "exposure_within_budget": open_exposure <= float(campaign.budget_quote),
+            "order_limits_respected": max_requested <= float(campaign.max_quote_per_trade),
             "automatic_entries_disabled": bool(risk is None or not risk.auto_entry_enabled),
         }
         return {
@@ -258,10 +262,13 @@ def validate_active_soak_limits(db: Session, quote_amount: float) -> tuple[bool,
     if campaign is None:
         return True, "Nenhuma campanha Testnet contínua ativa."
     metrics = service.metrics(campaign)
-    if quote_amount > campaign.max_quote_per_trade:
+    max_quote_per_trade = float(campaign.max_quote_per_trade)
+    budget_quote = float(campaign.budget_quote)
+    max_loss_quote = float(campaign.max_loss_quote)
+    if quote_amount > max_quote_per_trade:
         return False, f"A campanha limita cada compra a {campaign.max_quote_per_trade:.2f} USDT."
-    if metrics["open_exposure_quote"] + quote_amount > campaign.budget_quote:
+    if metrics["open_exposure_quote"] + quote_amount > budget_quote:
         return False, f"A compra excederia o orçamento experimental de {campaign.budget_quote:.2f} USDT."
-    if metrics["realized_pnl_quote"] <= -campaign.max_loss_quote:
+    if metrics["realized_pnl_quote"] <= -max_loss_quote:
         return False, f"A campanha atingiu a perda máxima de {campaign.max_loss_quote:.2f} USDT."
     return True, "Limites da campanha Testnet atendidos."

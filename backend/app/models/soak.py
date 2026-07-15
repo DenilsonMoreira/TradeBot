@@ -1,7 +1,8 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, Float, Index, Integer, String, func, text
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, Index, Integer, Numeric, String, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -25,11 +26,11 @@ class TestnetSoakCampaign(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="RUNNING")
-    budget_brl: Mapped[float] = mapped_column(Float, nullable=False)
-    reference_brl_per_usdt: Mapped[float] = mapped_column(Float, nullable=False)
-    budget_quote: Mapped[float] = mapped_column(Float, nullable=False)
-    max_quote_per_trade: Mapped[float] = mapped_column(Float, nullable=False)
-    max_loss_quote: Mapped[float] = mapped_column(Float, nullable=False)
+    budget_brl: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
+    reference_brl_per_usdt: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
+    budget_quote: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
+    max_quote_per_trade: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
+    max_loss_quote: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
     duration_hours: Mapped[int] = mapped_column(Integer, nullable=False)
     symbols: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
     baseline_candle_counts: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
@@ -37,4 +38,3 @@ class TestnetSoakCampaign(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
