@@ -113,10 +113,18 @@ externo ao servidor:
 .\deploy\backup-database.ps1
 ```
 
+Os modelos treinados ficam em um volume separado e não fazem parte do dump do
+PostgreSQL. Salve-os também, especialmente após treinamentos e promoções:
+
+```powershell
+.\deploy\backup-model-artifacts.ps1
+```
+
 No Docker local, informe explicitamente os arquivos usados no desenvolvimento:
 
 ```powershell
 .\deploy\backup-database.ps1 -EnvironmentFile .env -ComposeFile docker-compose.yml
+.\deploy\backup-model-artifacts.ps1 -EnvironmentFile .env -ComposeFile docker-compose.yml
 ```
 
 Valide o arquivo sem tocar no banco operacional:
