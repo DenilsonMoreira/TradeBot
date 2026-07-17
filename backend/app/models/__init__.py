@@ -10,3 +10,4 @@ from .prediction import Prediction
 from .audit import AuditEvent
 from .notification import Notification
 from .soak import TestnetSoakCampaign
+from .user import User, UserInvitation

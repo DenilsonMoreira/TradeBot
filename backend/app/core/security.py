@@ -16,6 +16,7 @@ class OperatorSession:
     email: str
     csrf_token: str
     expires_at: int
+    role: str = "ADMIN"
 
 
 def hash_password(password: str, *, salt: bytes | None = None) -> str:
@@ -59,11 +60,12 @@ def verify_totp(secret: str, code: str, *, now: int | None = None) -> bool:
     return False
 
 
-def create_session(email: str, secret_key: str, ttl_minutes: int) -> tuple[str, OperatorSession]:
+def create_session(email: str, secret_key: str, ttl_minutes: int, *, role: str = "ADMIN") -> tuple[str, OperatorSession]:
     session = OperatorSession(
         email=email,
         csrf_token=secrets.token_urlsafe(24),
         expires_at=int(time.time()) + ttl_minutes * 60,
+        role=role,
     )
     payload = _encode(json.dumps(session.__dict__, separators=(",", ":")).encode())
     signature = _encode(hmac.new(secret_key.encode(), payload.encode(), hashlib.sha256).digest())

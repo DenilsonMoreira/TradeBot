@@ -30,6 +30,15 @@ class Settings(BaseSettings):
     auth_max_attempts: int = 5
     auth_attempt_window_seconds: int = 900
     auth_lockout_seconds: int = 900
+    public_web_url: str = "http://localhost:3000"
+    user_invitation_hours: int = 48
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = ""
+    smtp_use_tls: bool = True
+    telegram_bot_token: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",

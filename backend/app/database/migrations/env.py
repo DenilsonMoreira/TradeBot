@@ -12,6 +12,7 @@ from app.models.prediction import Prediction  # noqa: F401
 from app.models.audit import AuditEvent  # noqa: F401
 from app.models.notification import Notification  # noqa: F401
 from app.models.soak import TestnetSoakCampaign  # noqa: F401
+from app.models.user import User, UserInvitation  # noqa: F401
 
 
 config = context.config

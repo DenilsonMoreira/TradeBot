@@ -1,12 +1,16 @@
 import hashlib
 import hmac
 
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core.rate_limit import LoginRateLimiter
 from app.core.security import create_session, verify_password, verify_totp
 from app.schemas.auth import LoginRequest, NativeSessionResponse, SessionResponse
+from app.database import get_db
+from app.models.user import User
 
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -36,42 +40,49 @@ def _raise_rate_limit(retry_after: int) -> None:
     )
 
 
-def authenticate(payload: LoginRequest, request: Request):
+def authenticate(payload: LoginRequest, request: Request, db: Session):
     if not auth_is_configured():
         raise HTTPException(status_code=503, detail="Autenticação do operador não configurada.")
     rate_limit_key = _rate_limit_key(payload, request)
     retry_after = login_rate_limiter.retry_after(rate_limit_key)
     if retry_after:
         _raise_rate_limit(retry_after)
-    email_ok = hmac.compare_digest(payload.email.lower(), settings.auth_operator_email.lower())
-    password_ok = verify_password(payload.password, settings.auth_password_hash)
-    totp_ok = verify_totp(settings.auth_totp_secret, payload.totp_code)
-    if not (email_ok and password_ok and totp_ok):
+    normalized_email = payload.email.lower()
+    is_admin = hmac.compare_digest(normalized_email, settings.auth_operator_email.lower())
+    if is_admin:
+        authenticated = verify_password(payload.password, settings.auth_password_hash) and verify_totp(settings.auth_totp_secret, payload.totp_code)
+        role = "ADMIN"
+    else:
+        user = db.scalar(select(User).where(User.email == normalized_email, User.status == "ACTIVE"))
+        authenticated = user is not None and verify_password(payload.password, user.password_hash)
+        role = user.role if user is not None else "MEMBER"
+    if not authenticated:
         retry_after = login_rate_limiter.register_failure(rate_limit_key)
         if retry_after:
             _raise_rate_limit(retry_after)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciais inválidas.")
     login_rate_limiter.register_success(rate_limit_key)
-    return create_session(payload.email.lower(), settings.auth_secret_key, settings.auth_session_minutes)
+    return create_session(normalized_email, settings.auth_secret_key, settings.auth_session_minutes, role=role)
 
 
 @router.post("/login", response_model=SessionResponse)
-def login(payload: LoginRequest, request: Request, response: Response) -> SessionResponse:
-    token, session = authenticate(payload, request)
+def login(payload: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)) -> SessionResponse:
+    token, session = authenticate(payload, request, db)
     response.set_cookie(
         COOKIE_NAME, token, max_age=settings.auth_session_minutes * 60,
         httponly=True, secure=settings.auth_cookie_secure, samesite="strict", path="/",
     )
-    return SessionResponse(email=session.email, csrf_token=session.csrf_token)
+    return SessionResponse(email=session.email, csrf_token=session.csrf_token, role=session.role)
 
 
 @router.post("/mobile-login", response_model=NativeSessionResponse)
-def mobile_login(payload: LoginRequest, request: Request) -> NativeSessionResponse:
-    token, session = authenticate(payload, request)
+def mobile_login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)) -> NativeSessionResponse:
+    token, session = authenticate(payload, request, db)
     return NativeSessionResponse(
         email=session.email,
         csrf_token=session.csrf_token,
         session_token=token,
+        role=session.role,
     )
 
 
@@ -82,6 +93,6 @@ def logout(response: Response) -> None:
 
 @router.get("/session", response_model=SessionResponse)
 def session(request: Request) -> SessionResponse:
-    from app.api.dependencies import get_operator_session
-    current = get_operator_session(request)
-    return SessionResponse(email=current.email, csrf_token=current.csrf_token)
+    from app.api.dependencies import get_authenticated_session
+    current = get_authenticated_session(request)
+    return SessionResponse(email=current.email, csrf_token=current.csrf_token, role=current.role)

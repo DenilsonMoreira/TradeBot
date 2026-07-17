@@ -6,11 +6,14 @@ import struct
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import require_operator_csrf
+from app.api.dependencies import require_admin_session, require_operator_csrf
 from app.api.routes.auth import login_rate_limiter, router
 from app.config import settings
 from app.core.rate_limit import LoginRateLimiter
 from app.core.security import create_session, hash_password, read_session, verify_password, verify_totp
+from app.core.security import OperatorSession
+from fastapi import HTTPException
+import pytest
 
 
 def test_password_hash_roundtrip() -> None:
@@ -24,6 +27,14 @@ def test_signed_session_rejects_tampering_and_expiration() -> None:
     assert read_session(token, "secret").email == session.email
     assert read_session(token + "x", "secret") is None
     assert read_session(token, "secret", now=session.expires_at) is None
+
+
+def test_member_session_cannot_become_administrator(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "auth_operator_email", "operator@example.com")
+    member = OperatorSession(email="member@example.com", csrf_token="csrf", expires_at=4_102_444_800, role="MEMBER")
+    with pytest.raises(HTTPException) as error:
+        require_admin_session(member)
+    assert error.value.status_code == 403
 
 
 def test_totp_accepts_current_code() -> None:

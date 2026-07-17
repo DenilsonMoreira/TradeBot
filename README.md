@@ -41,6 +41,23 @@ Ele também cria `backend/scripts/tradebrain-authenticator.png`; abra a imagem,
 escaneie-a no aplicativo autenticador e apague o arquivo após concluir o
 cadastro. O QR Code contém o segredo TOTP e é ignorado pelo Git.
 
+## Usuários convidados
+
+O menu **Usuários** é exclusivo do administrador. O administrador cria um
+convite por e-mail ou Telegram e o convidado usa um link de uso único, válido
+por 48 horas, para informar seus dados e criar a própria senha. O CPF/CNPJ
+completo não é persistido: o banco guarda uma impressão HMAC para detectar
+duplicidade e somente os quatro últimos dígitos para identificação visual.
+
+Depois da conclusão, a conta permanece em `PENDING_APPROVAL` até a liberação
+manual do administrador. Usuários liberados acessam apenas a área de membro;
+o painel de trading, saldos e ações operacionais continuam restritos ao admin.
+
+Para envio automático, configure no `.env` um servidor SMTP (`SMTP_HOST`,
+`SMTP_FROM_EMAIL` e credenciais) e/ou `TELEGRAM_BOT_TOKEN`. Sem esses dados, a
+tela gera e copia o link para envio manual. Em convites pelo Telegram, informe
+o ID numérico do chat; o convidado precisa ter iniciado uma conversa com o bot.
+
 Serviços iniciados:
 
 - `api`: FastAPI e migrations Alembic;

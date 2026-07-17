@@ -11,7 +11,7 @@ type Candle = { id: number; symbol: string; interval: string; open: string; high
 type MarketConfig = { symbols: string[]; intervals: string[]; dashboard_refresh_seconds: number };
 type Model = { id: number; dataset_id: number; algorithm: string; version: string; status: string; metrics: Record<string, number | string | null> };
 type Backtest = { id: number; strategy: string; symbol: string; final_capital: string; metrics: Record<string, number | string | null> };
-type AuthSession = { authenticated: boolean; email: string; csrf_token: string };
+type AuthSession = { authenticated: boolean; email: string; csrf_token: string; role: "ADMIN" | "MEMBER" };
 type Balance = { asset: string; free: string; locked: string };
 type Account = { environment: string; balances: Balance[] };
 type RiskSettings = { auto_entry_enabled: boolean; max_quote_amount_per_trade: number; max_daily_loss: number; max_open_positions: number; cooldown_minutes: number; updated_at: string };
@@ -29,6 +29,9 @@ type SoakMetrics = { elapsed_percent: number; remaining_hours: number; candles: 
 type SoakStatus = { campaign: SoakCampaign | null; metrics: SoakMetrics | null };
 type ReadinessCheck = { id: string; label: string; status: "PASS" | "PENDING" | "FAIL"; detail: string; gates: string[] };
 type ReadinessReport = { generated_at: string; environment: string; local_stack_ready: boolean; server_release_ready: boolean; automatic_trading_ready: boolean; summary: { passed: number; pending: number; failed: number; total: number }; checks: ReadinessCheck[] };
+type ManagedUser = { id: string; full_name: string; email: string | null; telegram_chat_id: string | null; phone: string | null; document_type: string; document_last4: string; role: string; status: string; terms_accepted: boolean; created_at: string; updated_at: string };
+type UserInvitation = { id: string; channel: "EMAIL" | "TELEGRAM"; destination: string; status: string; delivery_status: string; delivery_error: string | null; expires_at: string; accepted_at: string | null; created_at: string; invitation_url?: string | null };
+type PublicInvitation = { channel: "EMAIL" | "TELEGRAM"; destination_hint: string; expires_at: string };
 
 let csrfToken = "";
 
@@ -100,6 +103,15 @@ export default function Home() {
   const [soakStatus, setSoakStatus] = useState<SoakStatus | null>(null);
   const [readiness, setReadiness] = useState<ReadinessReport | null>(null);
   const [activeSection, setActiveSection] = useState("overview");
+  const [users, setUsers] = useState<ManagedUser[]>([]);
+  const [invitations, setInvitations] = useState<UserInvitation[]>([]);
+  const [inviteChannel, setInviteChannel] = useState<"EMAIL" | "TELEGRAM">("EMAIL");
+  const [inviteDestination, setInviteDestination] = useState("");
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [onboardingToken, setOnboardingToken] = useState("");
+  const [publicInvitation, setPublicInvitation] = useState<PublicInvitation | null>(null);
+  const [onboardingError, setOnboardingError] = useState("");
+  const [onboardingDone, setOnboardingDone] = useState(false);
 
   const loadMarket = useCallback(async (symbols: string[], interval: string) => {
     if (!symbols.length) return;
@@ -124,7 +136,7 @@ export default function Home() {
     setBusy(true);
     setError("");
     try {
-      const [nextStatus, nextPositions, nextMarketConfig, nextModels, nextBacktests, nextRisk, nextSignals, nextOrders, nextAuditEvents, nextNotifications, nextResearchAutomation, nextResearchEvaluations, nextSoakStatus, nextReadiness] = await Promise.all([
+      const [nextStatus, nextPositions, nextMarketConfig, nextModels, nextBacktests, nextRisk, nextSignals, nextOrders, nextAuditEvents, nextNotifications, nextResearchAutomation, nextResearchEvaluations, nextSoakStatus, nextReadiness, nextUsers, nextInvitations] = await Promise.all([
         request<BotStatus>("/bot/status"),
         request<Position[]>("/positions?limit=20"),
         request<MarketConfig>("/candles/config"),
@@ -139,6 +151,8 @@ export default function Home() {
         request<ResearchEvaluation[]>("/research/evaluations?limit=12"),
         request<SoakStatus>("/testnet/soak"),
         request<ReadinessReport>("/readiness/report"),
+        request<ManagedUser[]>("/admin/users"),
+        request<UserInvitation[]>("/admin/user-invitations"),
       ]);
       setStatus(nextStatus);
       setPositions(nextPositions);
@@ -156,6 +170,8 @@ export default function Home() {
       setResearchEvaluations(nextResearchEvaluations);
       setSoakStatus(nextSoakStatus);
       setReadiness(nextReadiness);
+      setUsers(nextUsers);
+      setInvitations(nextInvitations);
       void request<Account>("/account/balance").then(setAccount).catch(() => setAccount(null));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível carregar o painel");
@@ -165,8 +181,19 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get("convite") ?? "";
+    if (token) {
+      void Promise.resolve().then(() => {
+        setOnboardingToken(token);
+        return request<PublicInvitation>(`/onboarding/invitations/${encodeURIComponent(token)}`);
+      })
+        .then(setPublicInvitation)
+        .catch((cause) => setOnboardingError(cause instanceof Error ? cause.message : "Não foi possível validar o convite."))
+        .finally(() => setAuthChecking(false));
+      return;
+    }
     void request<AuthSession>("/auth/session")
-      .then((session) => { csrfToken = session.csrf_token; setAuth(session); void load(); })
+      .then((session) => { csrfToken = session.csrf_token; setAuth(session); if (session.role === "ADMIN") void load(); })
       .catch(() => setAuth(null))
       .finally(() => setAuthChecking(false));
   }, [load]);
@@ -197,7 +224,7 @@ export default function Home() {
   }, [loginRetrySeconds]);
 
   useEffect(() => {
-    const sectionIds = ["overview", "soak", "readiness", "market", "operations", "orders", "positions", "notifications", "audit", "research"];
+    const sectionIds = ["overview", "users", "soak", "readiness", "market", "operations", "orders", "positions", "notifications", "audit", "research"];
     const selectHashSection = () => {
       const section = window.location.hash.slice(1);
       if (sectionIds.includes(section)) setActiveSection(section);
@@ -235,7 +262,7 @@ export default function Home() {
       });
       csrfToken = session.csrf_token;
       setAuth(session);
-      await load();
+      if (session.role === "ADMIN") await load();
     } catch (cause) {
       if (cause instanceof ApiError && cause.retryAfter > 0) setLoginRetrySeconds(cause.retryAfter);
       setLoginError(cause instanceof Error ? cause.message : "Falha na autenticação");
@@ -304,6 +331,62 @@ export default function Home() {
     setNotifications((current) => current.map((item) => ({ ...item, read_at: item.read_at ?? new Date().toISOString() })));
   };
 
+  const showInvitationLink = async (invitation: UserInvitation) => {
+    if (!invitation.invitation_url) return;
+    await navigator.clipboard.writeText(invitation.invitation_url);
+    await Swal.fire({ title: invitation.delivery_status === "SENT" ? "Convite enviado" : "Link pronto para envio", text: invitation.delivery_status === "SENT" ? "O link também foi copiado para sua área de transferência." : `${invitation.delivery_error ?? "O canal não está configurado."} O link foi copiado para você enviar manualmente.`, icon: invitation.delivery_status === "SENT" ? "success" : "info", background: "#10151b", color: "#eef5f2", confirmButtonColor: "#2da982" });
+  };
+
+  const createInvitation = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setInviteBusy(true);
+    try {
+      const invitation = await request<UserInvitation>("/admin/user-invitations", { method: "POST", body: JSON.stringify(inviteChannel === "EMAIL" ? { channel: inviteChannel, email: inviteDestination } : { channel: inviteChannel, telegram_chat_id: inviteDestination }) });
+      setInviteDestination("");
+      await load();
+      await showInvitationLink(invitation);
+    } catch (cause) {
+      await Swal.fire({ title: "Não foi possível criar o convite", text: cause instanceof Error ? cause.message : "Revise os dados e tente novamente.", icon: "error", background: "#10151b", color: "#eef5f2", confirmButtonColor: "#d94f56" });
+    } finally { setInviteBusy(false); }
+  };
+
+  const resendInvitation = async (id: string) => {
+    setInviteBusy(true);
+    try {
+      const invitation = await request<UserInvitation>(`/admin/user-invitations/${id}/resend`, { method: "POST" });
+      await load();
+      await showInvitationLink(invitation);
+    } catch (cause) {
+      await Swal.fire({ title: "Falha ao reenviar", text: cause instanceof Error ? cause.message : "Tente novamente.", icon: "error", background: "#10151b", color: "#eef5f2" });
+    } finally { setInviteBusy(false); }
+  };
+
+  const revokeInvitation = async (id: string) => {
+    if (!await confirmAction("Revogar convite?", "O link deixará de funcionar imediatamente.", "Revogar", true)) return;
+    await runOperation("Revogação do convite", () => request(`/admin/user-invitations/${id}/revoke`, { method: "POST" }));
+  };
+
+  const approveUser = async (user: ManagedUser) => {
+    if (!await confirmAction("Liberar acesso?", `${user.full_name} poderá entrar na área de membro. O painel administrativo e o trading continuarão restritos.`, "Liberar usuário")) return;
+    await runOperation("Liberação do usuário", () => request(`/admin/users/${user.id}/approve`, { method: "POST" }));
+  };
+
+  const completeOnboarding = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setOnboardingError("");
+    const data = new FormData(event.currentTarget);
+    if (data.get("password") !== data.get("password_confirmation")) {
+      setOnboardingError("As senhas não coincidem.");
+      return;
+    }
+    try {
+      await request(`/onboarding/invitations/${encodeURIComponent(onboardingToken)}/complete`, { method: "POST", body: JSON.stringify({ full_name: data.get("full_name"), email: data.get("email") || undefined, phone: data.get("phone"), document_type: data.get("document_type"), document_number: data.get("document_number"), password: data.get("password"), terms_accepted: data.get("terms") === "on" }) });
+      setOnboardingDone(true);
+    } catch (cause) {
+      setOnboardingError(cause instanceof Error ? cause.message : "Não foi possível concluir seu cadastro.");
+    }
+  };
+
   const candles = useMemo(() => marketCandles[selectedSymbol] ?? [], [marketCandles, selectedSymbol]);
   const lastCandle = candles.at(-1);
   const lastPrice = lastCandle?.close;
@@ -343,14 +426,20 @@ export default function Home() {
 
   if (authChecking) return <main className="auth-shell"><div className="auth-card"><span className="brand-mark">TB</span><p>Validando sessão segura…</p></div></main>;
 
-  if (!auth) return <main className="auth-shell"><form className="auth-card" onSubmit={(event) => void login(event)}><span className="brand-mark">TB</span><div><p className="eyebrow">Acesso protegido</p><h1>TradeBrain</h1><p className="auth-copy">Entre com as credenciais do operador e o código de seis dígitos do seu autenticador.</p></div><label>E-mail<input name="email" type="email" autoComplete="username" required disabled={loginRetrySeconds > 0} /></label><label>Senha<input name="password" type="password" autoComplete="current-password" minLength={12} required disabled={loginRetrySeconds > 0} /></label><label>Código autenticador<input name="totp" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required disabled={loginRetrySeconds > 0} /></label>{loginError && <p className="auth-error" role="alert">{loginError}{loginRetrySeconds > 0 && <> Tente novamente em {Math.ceil(loginRetrySeconds / 60)} min.</>}</p>}<button type="submit" disabled={loginRetrySeconds > 0}>{loginRetrySeconds > 0 ? `Aguarde ${Math.ceil(loginRetrySeconds / 60)} min` : "Entrar com segurança"}</button><small>O acesso expira automaticamente após o período configurado.</small></form></main>;
+  if (onboardingToken && onboardingDone) return <main className="auth-shell"><section className="auth-card onboarding-success"><span className="brand-mark">TB</span><p className="eyebrow">Cadastro recebido</p><h1>Tudo certo!</h1><p className="auth-copy">Seus dados foram protegidos e enviados para análise. Você receberá a liberação do administrador antes de acessar sua conta.</p><a className="primary-link" href={window.location.pathname}>Ir para a tela de acesso</a></section></main>;
+
+  if (onboardingToken) return <main className="auth-shell"><form className="auth-card onboarding-card" onSubmit={(event) => void completeOnboarding(event)}><span className="brand-mark">TB</span><div><p className="eyebrow">Convite TradeBrain</p><h1>Conclua seu cadastro</h1><p className="auth-copy">{publicInvitation ? `Convite enviado por ${publicInvitation.channel === "EMAIL" ? "e-mail" : "Telegram"} para ${publicInvitation.destination_hint}.` : "Confirme seus dados para continuar."} Seus dados financeiros não serão solicitados nesta etapa.</p></div>{onboardingError && !publicInvitation ? <p className="auth-error" role="alert">{onboardingError}</p> : <><div className="form-section"><strong>Dados pessoais</strong><label>Nome completo<input name="full_name" autoComplete="name" minLength={3} required /></label>{publicInvitation?.channel === "TELEGRAM" && <label>E-mail de acesso<input name="email" type="email" autoComplete="email" required /></label>}<label>Telefone<input name="phone" type="tel" autoComplete="tel" minLength={8} required /></label><div className="form-row"><label>Documento<select name="document_type"><option value="CPF">CPF</option><option value="CNPJ">CNPJ</option></select></label><label>Número<input name="document_number" inputMode="numeric" autoComplete="off" minLength={11} required /></label></div></div><div className="form-section"><strong>Crie sua senha</strong><label>Senha<input name="password" type="password" autoComplete="new-password" minLength={12} required /><small>Mínimo de 12 caracteres.</small></label><label>Confirme a senha<input name="password_confirmation" type="password" autoComplete="new-password" minLength={12} required /></label></div><label className="terms-check"><input name="terms" type="checkbox" required /> Confirmo que os dados são verdadeiros e aceito o uso deles para criar minha conta.</label>{onboardingError && <p className="auth-error" role="alert">{onboardingError}</p>}<button type="submit">Finalizar cadastro</button><small>O número completo do documento não é armazenado; guardamos somente uma impressão de segurança e os quatro últimos dígitos.</small></>}</form></main>;
+
+  if (!auth) return <main className="auth-shell"><form className="auth-card" onSubmit={(event) => void login(event)}><span className="brand-mark">TB</span><div><p className="eyebrow">Acesso protegido</p><h1>TradeBrain</h1><p className="auth-copy">Entre com seu e-mail e senha. O código autenticador é obrigatório somente para o administrador.</p></div><label>E-mail<input name="email" type="email" autoComplete="username" required disabled={loginRetrySeconds > 0} /></label><label>Senha<input name="password" type="password" autoComplete="current-password" minLength={12} required disabled={loginRetrySeconds > 0} /></label><label>Código autenticador <small>Administrador</small><input name="totp" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} disabled={loginRetrySeconds > 0} /></label>{loginError && <p className="auth-error" role="alert">{loginError}{loginRetrySeconds > 0 && <> Tente novamente em {Math.ceil(loginRetrySeconds / 60)} min.</>}</p>}<button type="submit" disabled={loginRetrySeconds > 0}>{loginRetrySeconds > 0 ? `Aguarde ${Math.ceil(loginRetrySeconds / 60)} min` : "Entrar com segurança"}</button><small>O acesso expira automaticamente após o período configurado.</small></form></main>;
+
+  if (auth.role !== "ADMIN") return <main className="auth-shell"><section className="auth-card member-card"><span className="brand-mark">TB</span><p className="eyebrow">Área do membro</p><h1>Conta liberada</h1><p className="auth-copy">Seu cadastro está ativo. O painel de trading, os saldos e as configurações administrativas são privados e continuam acessíveis somente ao administrador.</p><div className="member-status"><span>Conta</span><strong>Ativa e protegida</strong></div><button onClick={() => void logout()}>Sair</button></section></main>;
 
   return (
     <main className="app-shell">
       <aside className="sidebar">
         <div className="brand"><span className="brand-mark">TB</span><div><strong>TradeBrain</strong><small>Quantitative desk</small></div></div>
         <nav aria-label="Navegação principal">
-          {[{ id: "overview", label: "Visão geral" }, { id: "soak", label: "Teste R$ 500" }, { id: "readiness", label: "Prontidão" }, { id: "market", label: "Mercado" }, { id: "operations", label: "Operação" }, { id: "orders", label: "Compras e vendas" }, { id: "positions", label: "Posições" }, { id: "notifications", label: "Notificações" }, { id: "audit", label: "Auditoria" }, { id: "research", label: "Pesquisa & IA" }].map((item) => <a key={item.id} className={activeSection === item.id ? "active" : ""} href={`#${item.id}`} aria-current={activeSection === item.id ? "page" : undefined} onClick={() => setActiveSection(item.id)}>{item.label}</a>)}
+          {[{ id: "overview", label: "Visão geral" }, { id: "users", label: "Usuários" }, { id: "soak", label: "Teste R$ 500" }, { id: "readiness", label: "Prontidão" }, { id: "market", label: "Mercado" }, { id: "operations", label: "Operação" }, { id: "orders", label: "Compras e vendas" }, { id: "positions", label: "Posições" }, { id: "notifications", label: "Notificações" }, { id: "audit", label: "Auditoria" }, { id: "research", label: "Pesquisa & IA" }].map((item) => <a key={item.id} className={activeSection === item.id ? "active" : ""} href={`#${item.id}`} aria-current={activeSection === item.id ? "page" : undefined} onClick={() => setActiveSection(item.id)}>{item.label}</a>)}
         </nav>
         <div className="sidebar-foot"><span className={`pulse ${error ? "danger" : ""}`} />{error ? "API desconectada" : "Binance Testnet"}</div>
       </aside>
@@ -362,6 +451,25 @@ export default function Home() {
         </header>
 
         {error && <div className="notice"><strong>Conecte a API local.</strong><span>{error} · endereço esperado: {API}</span></div>}
+
+        <section className="panel users-panel" id="users">
+          <div className="panel-title"><div><p className="eyebrow">Acesso administrativo</p><h3>Usuários e convites</h3></div><span>Somente você pode convidar e liberar contas</span></div>
+          <div className="users-layout">
+            <form className="invite-form" onSubmit={(event) => void createInvitation(event)}>
+              <div><strong>Novo convite</strong><p>O convidado receberá um link pessoal para informar documento e criar a própria senha.</p></div>
+              <div className="channel-picker" role="group" aria-label="Canal do convite"><button type="button" className={inviteChannel === "EMAIL" ? "active" : ""} onClick={() => { setInviteChannel("EMAIL"); setInviteDestination(""); }}>E-mail</button><button type="button" className={inviteChannel === "TELEGRAM" ? "active" : ""} onClick={() => { setInviteChannel("TELEGRAM"); setInviteDestination(""); }}>Telegram</button></div>
+              <label>{inviteChannel === "EMAIL" ? "E-mail do convidado" : "ID do chat no Telegram"}<input value={inviteDestination} onChange={(event) => setInviteDestination(event.target.value)} type={inviteChannel === "EMAIL" ? "email" : "text"} placeholder={inviteChannel === "EMAIL" ? "nome@exemplo.com" : "Ex.: 123456789"} required /><small>{inviteChannel === "TELEGRAM" ? "A pessoa precisa iniciar uma conversa com seu bot antes do envio." : "O link expira em 48 horas e funciona uma única vez."}</small></label>
+              <button className="invite-submit" disabled={inviteBusy}>{inviteBusy ? "Preparando…" : "Criar e enviar convite"}</button>
+              <p className="privacy-note">Pagamentos não fazem parte deste cadastro. Essa etapa poderá ser adicionada futuramente por um provedor especializado.</p>
+            </form>
+            <div className="user-stats"><article><small>Usuários</small><strong>{users.length}</strong><span>{users.filter((user) => user.status === "ACTIVE").length} liberados</span></article><article><small>Convites pendentes</small><strong>{invitations.filter((item) => item.status === "PENDING").length}</strong><span>{invitations.filter((item) => item.delivery_status === "SENT").length} enviados automaticamente</span></article></div>
+          </div>
+          <div className="management-grid">
+            <div><div className="management-title"><strong>Cadastros concluídos</strong><span>Aprovação manual</span></div><div className="management-list">{users.length ? users.map((user) => <article key={user.id}><div className="user-avatar">{user.full_name.split(" ").slice(0, 2).map((name) => name[0]).join("")}</div><div><strong>{user.full_name}</strong><small>{user.email} · {user.document_type} final {user.document_last4}</small></div><span className={`account-state ${user.status.toLowerCase()}`}>{user.status === "ACTIVE" ? "Liberado" : "Aguardando"}</span>{user.status !== "ACTIVE" && <button onClick={() => void approveUser(user)}>Liberar</button>}</article>) : <p className="empty-inline">Nenhum cadastro foi concluído ainda.</p>}</div></div>
+            <div><div className="management-title"><strong>Convites recentes</strong><span>{invitations.length} no histórico</span></div><div className="management-list">{invitations.length ? invitations.slice(0, 8).map((invitation) => <article key={invitation.id}><div className="channel-icon">{invitation.channel === "EMAIL" ? "@" : "TG"}</div><div><strong>{invitation.destination}</strong><small>{invitation.status === "PENDING" ? `Expira ${new Date(invitation.expires_at).toLocaleString("pt-BR")}` : invitation.status === "ACCEPTED" ? "Cadastro concluído" : "Convite revogado"}</small></div><span className={`delivery-state ${invitation.delivery_status.toLowerCase()}`}>{invitation.delivery_status === "SENT" ? "Enviado" : invitation.delivery_status === "MANUAL_REQUIRED" ? "Envio manual" : invitation.status}</span>{invitation.status === "PENDING" && <div className="row-actions"><button onClick={() => void resendInvitation(invitation.id)} disabled={inviteBusy}>Reenviar</button><button className="danger-link" onClick={() => void revokeInvitation(invitation.id)}>Revogar</button></div>}</article>) : <p className="empty-inline">Crie o primeiro convite ao lado.</p>}</div></div>
+          </div>
+        </section>
+
         <section className="daily-summary" id="daily" aria-label="Resumo operacional do dia">
           <div><p className="eyebrow">Resumo de hoje</p><strong>{status?.mode === "TESTNET_TRADING" ? "Operação Testnet ativa" : status?.mode === "MONITOR" ? "Mercado em monitoramento" : "Bot sem novas entradas"}</strong></div>
           <dl>

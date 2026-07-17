@@ -1,3 +1,4 @@
+from app.ai.artifact_validation import validate_model_artifact
 from app.ai.trainer import train_candidates
 from app.models.research import TrainedModel
 from app.repositories.research_repository import ResearchRepository
@@ -27,8 +28,11 @@ class TrainingService:
             for model in self.research.get_models_for_dataset(dataset_id)
             if model.version == MODEL_VERSION
         ]
-        existing_names = {model.algorithm for model in existing}
-        missing = EXPECTED_ALGORITHMS - existing_names
+        existing_by_name = {model.algorithm: model for model in existing}
+        missing = {
+            name for name in EXPECTED_ALGORITHMS
+            if name not in existing_by_name or not validate_model_artifact(existing_by_name[name].artifact_path)[0]
+        }
         if not missing:
             return existing
         results = train_candidates(
@@ -46,7 +50,15 @@ class TrainingService:
                 )
             ),
         )
-        models = [TrainedModel(dataset_id=dataset.id, algorithm=name, version=MODEL_VERSION, metrics=metrics, artifact_path=path) for name, metrics, path in results]
+        models = []
+        for name, metrics, path in results:
+            model = existing_by_name.get(name)
+            if model is None:
+                model = TrainedModel(dataset_id=dataset.id, algorithm=name, version=MODEL_VERSION, metrics=metrics, artifact_path=path)
+            else:
+                model.metrics = metrics
+                model.artifact_path = path
+            models.append(model)
         try:
             for model in models:
                 self.research.save(model)
@@ -56,4 +68,5 @@ class TrainingService:
         except Exception:
             self.research.session.rollback()
             raise
-        return sorted([*existing, *models], key=lambda model: model.algorithm)
+        final = {model.algorithm: model for model in [*existing, *models]}
+        return sorted(final.values(), key=lambda model: model.algorithm)

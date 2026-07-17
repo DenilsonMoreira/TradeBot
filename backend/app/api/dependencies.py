@@ -88,7 +88,7 @@ def get_notification_service(db: Session = Depends(get_db)) -> NotificationServi
     return NotificationService(NotificationRepository(db))
 
 
-def get_operator_session(request: Request) -> OperatorSession:
+def get_authenticated_session(request: Request) -> OperatorSession:
     if not auth_is_configured():
         raise HTTPException(status_code=503, detail="Autenticação do operador não configurada.")
     authorization = request.headers.get("Authorization", "")
@@ -100,9 +100,29 @@ def get_operator_session(request: Request) -> OperatorSession:
     return session
 
 
+def require_admin_session(session: OperatorSession = Depends(get_authenticated_session)) -> OperatorSession:
+    if session.role != "ADMIN" or not hmac.compare_digest(session.email.lower(), settings.auth_operator_email.lower()):
+        raise HTTPException(status_code=403, detail="Apenas o administrador pode realizar esta ação.")
+    return session
+
+
+def get_operator_session(session: OperatorSession = Depends(require_admin_session)) -> OperatorSession:
+    return session
+
+
 def require_operator_csrf(
     request: Request,
-    session: OperatorSession = Depends(get_operator_session),
+    session: OperatorSession = Depends(require_admin_session),
+) -> OperatorSession:
+    csrf = request.headers.get("X-CSRF-Token", "")
+    if not hmac.compare_digest(csrf, session.csrf_token):
+        raise HTTPException(status_code=403, detail="Token CSRF inválido.")
+    return session
+
+
+def require_admin_csrf(
+    request: Request,
+    session: OperatorSession = Depends(require_admin_session),
 ) -> OperatorSession:
     csrf = request.headers.get("X-CSRF-Token", "")
     if not hmac.compare_digest(csrf, session.csrf_token):

@@ -20,6 +20,9 @@ class ResearchRepository:
     def list_datasets(self, limit: int = 50):
         return self.session.scalars(select(DatasetArtifact).order_by(DatasetArtifact.created_at.desc()).limit(limit)).all()
 
+    def list_all_datasets(self):
+        return self.session.scalars(select(DatasetArtifact).order_by(DatasetArtifact.id)).all()
+
     def get_dataset(self, dataset_id: int):
         return self.session.get(DatasetArtifact, dataset_id)
 
@@ -53,6 +56,9 @@ class ResearchRepository:
 
     def list_models(self, limit: int = 50):
         return self.session.scalars(select(TrainedModel).order_by(TrainedModel.created_at.desc()).limit(limit)).all()
+
+    def list_all_models(self):
+        return self.session.scalars(select(TrainedModel).order_by(TrainedModel.id)).all()
 
     def list_evaluation_runs(self, limit: int = 50):
         return self.session.scalars(
