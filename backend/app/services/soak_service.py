@@ -96,6 +96,35 @@ class TestnetSoakService:
         self.db.flush()
         return campaign
 
+    def cancel_active(
+        self,
+        *,
+        reason: str,
+        canceled_by: str = "system:operator",
+    ) -> TestnetSoakCampaign:
+        campaign = self.active()
+        if campaign is None:
+            raise ValueError("Não existe campanha Testnet em andamento para cancelar.")
+        reason = reason.strip()
+        if not reason:
+            raise ValueError("Informe o motivo do cancelamento da campanha Testnet.")
+
+        now = datetime.now(timezone.utc)
+        metrics = self.metrics(campaign)
+        monitoring = dict(campaign.result or {})
+        final_result = dict(metrics)
+        final_result["monitoring"] = monitoring
+        final_result["cancellation"] = {
+            "reason": reason,
+            "canceled_by": canceled_by,
+            "canceled_at": now.isoformat(),
+        }
+        campaign.status = "CANCELED"
+        campaign.result = final_result
+        campaign.completed_at = now
+        self.db.flush()
+        return campaign
+
     def metrics(self, campaign: TestnetSoakCampaign) -> dict:
         now = datetime.now(timezone.utc)
         expected_per_symbol = campaign.duration_hours * 4

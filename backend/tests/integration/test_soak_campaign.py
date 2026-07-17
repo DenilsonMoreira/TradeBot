@@ -75,6 +75,33 @@ def test_soak_campaign_requires_automatic_entries_disabled() -> None:
         set_auto_entry(session, False)
 
 
+def test_soak_campaign_can_be_canceled_and_restarted_with_history() -> None:
+    with SessionLocal() as session:
+        session.execute(delete(SoakCampaign))
+        set_auto_entry(session, False)
+        service = SoakService(session)
+        original = service.start()
+        original_id = original.id
+
+        canceled = service.cancel_active(
+            reason="Interrupção controlada de infraestrutura.",
+            canceled_by="test:operator",
+        )
+        replacement = service.start()
+        session.commit()
+
+        assert canceled.id == original_id
+        assert canceled.status == "CANCELED"
+        assert canceled.completed_at is not None
+        assert canceled.result["cancellation"]["canceled_by"] == "test:operator"
+        assert replacement.id != original_id
+        assert replacement.status == "RUNNING"
+        assert service.active().id == replacement.id
+
+        session.execute(delete(SoakCampaign))
+        session.commit()
+
+
 def test_soak_monitor_records_new_alert_once_and_recovery() -> None:
     with SessionLocal() as session:
         session.execute(delete(SoakCampaign))

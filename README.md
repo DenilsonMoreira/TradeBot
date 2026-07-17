@@ -278,6 +278,17 @@ rejeitadas e respeito a todos os limites. A confirmação para iniciar é
 alertas e recuperações sem duplicação e notifica o operador quando o teste é
 encerrado automaticamente.
 
+Se uma interrupção de infraestrutura invalidar a continuidade da janela, use o
+comando abaixo. A campanha ativa é preservada como `CANCELED`, com motivo e
+métricas, e uma nova janela só é criada se Testnet, `MONITOR`, entradas
+automáticas desligadas e promoção automática bloqueada estiverem confirmados:
+
+```powershell
+docker compose exec -T api python scripts/restart_testnet_soak_campaign.py `
+  --duration-hours 168 `
+  --reason "Descreva a interrupção"
+```
+
 ## Prontidão para servidor
 
 O painel separa a saúde do Docker local, a liberação para servidor Testnet e a
